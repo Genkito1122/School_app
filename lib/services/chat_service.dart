@@ -1,0 +1,542 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
+import 'package:flutter/material.dart';
+
+class ChatService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+
+  // ==================== АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ЧАТОВ ====================
+
+  // Автоматически создает чат учителей и добавляет всех учителей школы
+  Future<void> createOrUpdateTeachersChat(String schoolId) async {
+    try {
+      print('🔄 Создание/обновление чата учителей для школы: $schoolId');
+
+      // 1. Получаем данные школы
+      final schoolDoc = await _firestore.collection('schools').doc(schoolId).get();
+      if (!schoolDoc.exists) {
+        print('❌ Школа не найдена: $schoolId');
+        return;
+      }
+
+      final schoolData = schoolDoc.data()!;
+      final schoolName = schoolData['name'];
+      final directorId = schoolData['directorId'];
+
+      // 2. Получаем данные директора
+      final directorDoc = await _firestore.collection('directors').doc(directorId).get();
+      final directorName = directorDoc.data()?['fullName'] ?? 'Директор';
+
+      // 3. Получаем всех учителей школы
+      final teachersSnapshot = await _firestore
+          .collection('teachers')
+          .where('schoolId', isEqualTo: schoolId)
+          .get();
+
+      final teacherIds = teachersSnapshot.docs.map((doc) => doc.id).toList();
+      final allParticipants = [directorId, ...teacherIds];
+      
+      // 4. Собираем имена всех участников
+      final participantNames = {
+        directorId: directorName,
+      };
+
+      // Добавляем имена учителей
+      for (final teacherDoc in teachersSnapshot.docs) {
+        final teacherData = teacherDoc.data();
+        participantNames[teacherDoc.id] = teacherData['fullName'] ?? 'Учитель';
+      }
+
+      final chatId = 'teachers_$schoolId';
+
+      // 5. Создаем или обновляем чат
+      await _firestore.collection('chats').doc(chatId).set({
+        'chatId': chatId,
+        'type': 'teachers',
+        'name': 'Чат учителей $schoolName',
+        'schoolId': schoolId,
+        'participants': allParticipants,
+        'participantNames': participantNames,
+        'lastMessage': 'Чат учителей создан',
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print('✅ Чат учителей создан/обновлен: $chatId');
+      print('👥 Участники: ${allParticipants.length} человек');
+      
+    } catch (e) {
+      print('❌ Ошибка создания чата учителей: $e');
+    }
+  }
+
+  // Автоматически обновляет чат учителей при добавлении нового учителя
+  Future<void> updateTeachersChatOnNewTeacher(String schoolId, String teacherId, String teacherName) async {
+    try {
+      print('🔄 Обновление чата учителей для нового учителя: $teacherName');
+
+      final chatId = 'teachers_$schoolId';
+
+      await _firestore.collection('chats').doc(chatId).update({
+        'participants': FieldValue.arrayUnion([teacherId]),
+        'participantNames.$teacherId': teacherName,
+      });
+
+      print('✅ Учитель $teacherName добавлен в чат учителей');
+      
+    } catch (e) {
+      print('❌ Ошибка добавления учителя в чат: $e');
+      // Если чата нет - создаем его
+      await createOrUpdateTeachersChat(schoolId);
+    }
+  }
+
+  // Автоматически создает все системные чаты для школы
+  Future<void> initializeSchoolChats({
+    required String schoolId,
+    required String schoolName,
+    required String directorId,
+    required String directorName,
+  }) async {
+    try {
+      print('🔄 Инициализация всех чатов для школы: $schoolName');
+
+      // 1. Создаем чат учителей
+      await createOrUpdateTeachersChat(schoolId);
+
+      print('✅ Все чаты созданы для школы $schoolName');
+    } catch (e) {
+      print('❌ Ошибка инициализации чатов: $e');
+    }
+  }
+
+  // ==================== СИСТЕМА ОБЪЯВЛЕНИЙ ====================
+
+  // Отправка объявления с выбором получателей
+  Future<void> sendAnnouncement({
+  required String schoolId,
+  required String text,
+  required String senderName,
+  required String senderRole,
+  required List<String> targetChatTypes,
+}) async {
+  try {
+    print('📢 Отправка объявления в школы: $schoolId');
+    print('🎯 Цели: $targetChatTypes');
+
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // 1. Сохраняем объявление в историю с schoolId
+    final messageRef = _firestore.collection('messages').doc();
+    await messageRef.set({
+      'messageId': messageRef.id,
+      'type': 'announcement',
+      'schoolId': schoolId, // ДОБАВЛЯЕМ schoolId
+      'text': text,
+      'senderId': user.uid,
+      'senderName': senderName,
+      'senderRole': senderRole,
+      'isAnnouncement': true,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Рассылаем в выбранные чаты
+    if (targetChatTypes.contains('all') || targetChatTypes.contains('teachers')) {
+      await _sendToTeachersChat(schoolId, text, senderName, senderRole);
+    }
+
+    if (targetChatTypes.contains('all') || targetChatTypes.contains('class')) {
+      await _sendToAllClassChats(schoolId, text, senderName, senderRole);
+    }
+
+    print('✅ Объявление отправлено и сохранено в историю');
+    
+  } catch (e) {
+    print('❌ Ошибка отправки объявления: $e');
+    throw Exception('Не удалось отправить объявление');
+  }
+}
+
+  // Отправка в чат учителей
+  Future<void> _sendToTeachersChat(
+    String schoolId, 
+    String text, 
+    String senderName, 
+    String senderRole
+  ) async {
+    try {
+      final teachersChatId = 'teachers_$schoolId';
+      
+      await sendMessage(
+        chatId: teachersChatId,
+        text: text,
+        senderName: senderName,
+        senderRole: senderRole,
+        isAnnouncement: true,
+      );
+      
+      print('✅ Объявление отправлено в чат учителей');
+    } catch (e) {
+      print('❌ Ошибка отправки в чат учителей: $e');
+    }
+  }
+
+  // Отправка во все классные чаты
+  Future<void> _sendToAllClassChats(
+    String schoolId, 
+    String text, 
+    String senderName, 
+    String senderRole
+  ) async {
+    try {
+      // Получаем все классы школы
+      final classesSnapshot = await _firestore
+          .collection('classes')
+          .where('schoolId', isEqualTo: schoolId)
+          .get();
+
+      int sentCount = 0;
+
+      // Для каждого класса находим чат и отправляем объявление
+      for (final classDoc in classesSnapshot.docs) {
+        final classId = classDoc.id;
+        
+        final chatSnapshot = await _firestore
+            .collection('chats')
+            .where('classId', isEqualTo: classId)
+            .where('type', isEqualTo: 'class')
+            .limit(1)
+            .get();
+
+        if (chatSnapshot.docs.isNotEmpty) {
+          final chatId = chatSnapshot.docs.first.id;
+          
+          await sendMessage(
+            chatId: chatId,
+            text: text,
+            senderName: senderName,
+            senderRole: senderRole,
+            isAnnouncement: true,
+          );
+          
+          sentCount++;
+          print('✅ Объявление отправлено в класс: $classId');
+        }
+      }
+
+      print('✅ Объявление разослано в $sentCount классных чатов');
+      
+    } catch (e) {
+      print('❌ Ошибка рассылки по классам: $e');
+    }
+  }
+
+  // Получить историю объявлений
+  Stream<QuerySnapshot> getAnnouncementsHistory(String schoolId) {
+  print('🔍 Загрузка истории объявлений для школы: $schoolId');
+  
+  return _firestore
+      .collection('messages')
+      .where('schoolId', isEqualTo: schoolId)
+      .where('isAnnouncement', isEqualTo: true)
+      .orderBy('createdAt', descending: true)
+      .snapshots();
+}
+
+  // ==================== ДОБАВЛЕНИЕ УЧАСТНИКОВ ====================
+
+  Future<void> addStudentToClassChat({
+    required String classId,
+    required String studentId,
+    required String studentName,
+  }) async {
+    try {
+      print('🔄 Добавление ученика $studentName в чат класса');
+
+      // Ищем классный чат
+      final chatSnapshot = await _firestore
+          .collection('chats')
+          .where('classId', isEqualTo: classId)
+          .where('type', isEqualTo: 'class')
+          .limit(1)
+          .get();
+
+      if (chatSnapshot.docs.isNotEmpty) {
+        final chatId = chatSnapshot.docs.first.id;
+        
+        await _firestore.collection('chats').doc(chatId).update({
+          'participants': FieldValue.arrayUnion([studentId]),
+          'participantNames.$studentId': studentName,
+        });
+
+        print('✅ Ученик $studentName добавлен в классный чат $classId');
+      } else {
+        print('⚠️ Классный чат не найден для classId: $classId');
+      }
+    } catch (e) {
+      print('❌ Ошибка добавления ученика в чат: $e');
+    }
+  }
+
+  // ==================== СОЗДАНИЕ КЛАССНОГО ЧАТА ====================
+
+  Future<void> createClassChat({
+    required String className,
+    required String classId,
+    required String schoolId,
+    required String teacherId,
+    required String teacherName,
+  }) async {
+    try {
+      final chatId = 'class_${classId}_${DateTime.now().millisecondsSinceEpoch}';
+
+      await _firestore.collection('chats').doc(chatId).set({
+        'chatId': chatId,
+        'type': 'class',
+        'name': 'Класс $className',
+        'schoolId': schoolId,
+        'classId': classId,
+        'teacherId': teacherId,
+        'participants': [teacherId],
+        'participantNames': {
+          teacherId: teacherName,
+        },
+        'lastMessage': 'Чат класса создан',
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      print('✅ Классный чат создан: $className');
+    } catch (e) {
+      print('❌ Ошибка создания классного чата: $e');
+      throw Exception('Не удалось создать чат класса');
+    }
+  }
+
+  // ==================== ОСНОВНЫЕ МЕТОДЫ ЧАТА ====================
+
+  Stream<QuerySnapshot> getUserChats() {
+    final user = _auth.currentUser;
+    if (user == null) return const Stream.empty();
+
+    return _firestore
+        .collection('chats')
+        .where('participants', arrayContains: user.uid)
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getChatMessages(String chatId) {
+    return _firestore
+        .collection('messages')
+        .where('chatId', isEqualTo: chatId)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  Future<void> sendMessage({
+  required String chatId,
+  required String text,
+  required String senderName,
+  required String senderRole,
+  String type = 'text',
+  bool isAnnouncement = false,
+  String? fileUrl,
+  String? fileName,
+}) async {
+  final user = _auth.currentUser;
+  if (user == null) {
+    print('❌ Пользователь не авторизован');
+    return;
+  }
+
+  print('🔄 Отправка сообщения в чат: $chatId');
+  print('📝 Текст: $text');
+  print('👤 Отправитель: $senderName ($senderRole)');
+
+  try {
+    final messageRef = _firestore.collection('messages').doc();
+    final messageData = {
+      'messageId': messageRef.id,
+      'chatId': chatId,
+      'senderId': user.uid,
+      'senderName': senderName,
+      'senderRole': senderRole,
+      'text': text,
+      'type': type,
+      'isAnnouncement': isAnnouncement,
+      'fileUrl': fileUrl,
+      'fileName': fileName,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    await messageRef.set(messageData);
+    print('✅ Сообщение отправлено с ID: ${messageRef.id}');
+
+    // Обновление последнего сообщения в чате
+    String lastMessageText = text;
+    if (type == 'file') {
+      lastMessageText = '📎 $fileName';
+    } else if (isAnnouncement) {
+      lastMessageText = '📢 $text';
+    }
+
+    await _firestore.collection('chats').doc(chatId).update({
+      'lastMessage': lastMessageText,
+      'lastMessageTime': FieldValue.serverTimestamp(),
+    });
+    print('✅ Чат обновлен');
+
+  } catch (e) {
+    print('❌ Ошибка отправки сообщения: $e');
+    rethrow;
+  }
+}
+
+  Future<bool> canUserWriteToChat(String chatId) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+    if (!chatDoc.exists) return false;
+
+    final chatData = chatDoc.data()!;
+    final userRole = await _getUserRole();
+
+    switch (chatData['type']) {
+      case 'announcement':
+        return userRole == 'director';
+      case 'teachers':
+        return userRole == 'director' || userRole == 'teacher';
+      case 'class':
+      case 'personal':
+        return chatData['participants'].contains(user.uid);
+      default:
+        return false;
+    }
+  }
+
+  // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
+
+  Future<String?> _getUserRole() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    return userDoc.data()?['role'];
+  }
+
+  Future<Map<String, String>> getUserInfoForMessage() async {
+    final user = _auth.currentUser;
+    if (user == null) return {'name': '', 'role': ''};
+
+    final userDoc = await _firestore.collection('users').doc(user.uid).get();
+    final userData = userDoc.data();
+    final role = userData?['role'] ?? '';
+
+    String fullName = '';
+    switch (role) {
+      case 'student':
+        final studentDoc = await _firestore.collection('students').doc(user.uid).get();
+        fullName = studentDoc.data()?['fullName'] ?? '';
+        break;
+      case 'teacher':
+        final teacherDoc = await _firestore.collection('teachers').doc(user.uid).get();
+        fullName = teacherDoc.data()?['fullName'] ?? '';
+        break;
+      case 'director':
+        final directorDoc = await _firestore.collection('directors').doc(user.uid).get();
+        fullName = directorDoc.data()?['fullName'] ?? '';
+        break;
+      default:
+        fullName = 'Пользователь';
+    }
+
+    return {'name': fullName, 'role': role};
+  }
+
+  String getChatDisplayName(Map<String, dynamic> chatData, String currentUserId) {
+    if (chatData['type'] == 'personal') {
+      final participants = Map<String, String>.from(chatData['participantNames'] ?? {});
+      for (final entry in participants.entries) {
+        if (entry.key != currentUserId) {
+          return entry.value;
+        }
+      }
+    }
+    
+    return chatData['name'] ?? 'Без названия';
+  }
+
+  IconData getChatIcon(String chatType) {
+    switch (chatType) {
+      case 'class': return Icons.group;
+      case 'teachers': return Icons.school;
+      case 'personal': return Icons.person;
+      case 'announcement': return Icons.campaign;
+      default: return Icons.chat;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getChildData(String parentId) async {
+  try {
+    // Находим родителя
+    final parentDoc = await _firestore.collection('parents').doc(parentId).get();
+    if (!parentDoc.exists) return null;
+
+    final parentData = parentDoc.data()!;
+    final childIds = List<String>.from(parentData['childIds'] ?? []);
+
+    if (childIds.isEmpty) return null;
+
+    // Берем первого ребенка (пока поддерживаем одного ребенка)
+    final childDoc = await _firestore.collection('students').doc(childIds.first).get();
+    if (!childDoc.exists) return null;
+
+    final childData = childDoc.data()!;
+    
+    return {
+      'childId': childIds.first,
+      'childName': childData['fullName'],
+      'className': childData['className'],
+      'classId': childData['classId'],
+      'schoolId': childData['schoolId'],
+      'birthDate': childData['birthDate'],
+    };
+  } catch (e) {
+    print('Ошибка получения данных ребенка: $e');
+    return null;
+  }
+ }
+
+ Future<String?> getChildClassChatId(String childId) async {
+  try {
+    // Получаем данные ребенка
+    final childDoc = await _firestore.collection('students').doc(childId).get();
+    if (!childDoc.exists) return null;
+
+    final childData = childDoc.data()!;
+    final classId = childData['classId'];
+
+    // Ищем классный чат
+    final chatSnapshot = await _firestore
+        .collection('chats')
+        .where('classId', isEqualTo: classId)
+        .where('type', isEqualTo: 'class')
+        .limit(1)
+        .get();
+
+    if (chatSnapshot.docs.isNotEmpty) {
+      return chatSnapshot.docs.first.id;
+    }
+    return null;
+  } catch (e) {
+    print('Ошибка поиска классного чата: $e');
+    return null;
+  }
+ }
+}
