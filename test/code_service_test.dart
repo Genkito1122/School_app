@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 
-// Простой тестовый класс для демонстрации
 class CodeService {
   String generateAdminCode() {
     return 'ADM${DateTime.now().millisecondsSinceEpoch}${_randomSuffix()}';
@@ -32,40 +31,26 @@ void main() {
     });
 
     test('Успешная генерация кода администратора', () {
-      // Act
       final code = codeService.generateAdminCode();
-      
-      // Assert
       expect(code, startsWith('ADM'));
       expect(code.length, greaterThan(10));
     });
 
     test('Успешная генерация кода учителя', () {
-      // Arrange
       const schoolId = 'school_123';
-      
-      // Act
       final code = codeService.generateTeacherCode(schoolId);
-      
-      // Assert
       expect(code, startsWith('TCH'));
       expect(code.length, greaterThan(10));
     });
 
     test('Успешная генерация кода ученика', () {
-      // Arrange
       const classId = 'class_456';
-      
-      // Act
       final code = codeService.generateStudentCode(classId);
-      
-      // Assert
       expect(code, startsWith('STU'));
       expect(code.length, greaterThan(10));
     });
 
     test('Проверка валидности кодов', () {
-      // Arrange
       final validCodes = [
         'ADM123456789',
         'TCH987654321', 
@@ -78,7 +63,6 @@ void main() {
         '123456789012'
       ];
 
-      // Act & Assert
       for (final code in validCodes) {
         final isValid = codeService.verifyCode(code);
         expect(isValid, isTrue, reason: 'Код $code должен быть валидным');
@@ -91,12 +75,9 @@ void main() {
     });
 
     test('Проверка формата кодов', () {
-      // Act
       final adminCode = codeService.generateAdminCode();
       final teacherCode = codeService.generateTeacherCode('test');
       final studentCode = codeService.generateStudentCode('test');
-      
-      // Assert
       expect(adminCode, startsWith('ADM'));
       expect(teacherCode, startsWith('TCH'));
       expect(studentCode, startsWith('STU'));

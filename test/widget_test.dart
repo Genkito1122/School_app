@@ -1,30 +1,97 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:school_app/main.dart';
+import 'package:school_app/auth/Auth.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('Виджет-тест валидации данных при авторизации', () {
+    
+    testWidgets('T-001: Валидация показывает ошибку при пустых полях входа', 
+        (WidgetTester tester) async {
+      // Arrange - запускаем экран аутентификации
+      await tester.pumpWidget(const MaterialApp(home: Auth()));
+      
+      print('🚀 Экран аутентификации запущен');
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      // Act - нажимаем кнопку "Войти" без заполнения полей
+      await tester.tap(find.text('Войти'));
+      await tester.pump(); // Ждем обновления состояния
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      // Assert - проверяем появление сообщения об ошибке
+      expect(find.text('Заполните все поля'), findsOneWidget);
+      
+      print('✅ Ошибка "Заполните все поля" отображается корректно');
+    });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    testWidgets('T-002: Валидация показывает ошибку при пустом логине', 
+        (WidgetTester tester) async {
+      // Arrange
+      await tester.pumpWidget(const MaterialApp(home: Auth()));
+
+      // Act - заполняем только пароль
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.tap(find.text('Войти'));
+      await tester.pump();
+
+      // Assert
+      expect(find.text('Заполните все поля'), findsOneWidget);
+      
+      print('✅ Ошибка отображается при пустом логине');
+    });
+
+    testWidgets('T-003: Валидация показывает ошибку при пустом пароле', 
+        (WidgetTester tester) async {
+      // Arrange
+      await tester.pumpWidget(const MaterialApp(home: Auth()));
+
+      // Act - заполняем только логин
+      await tester.enterText(find.byType(TextField).at(0), 'testuser');
+      await tester.tap(find.text('Войти'));
+      await tester.pump();
+
+      // Assert
+      expect(find.text('Заполните все поля'), findsOneWidget);
+      
+      print('✅ Ошибка отображается при пустом пароле');
+    });
+
+    testWidgets('T-004: Сообщение об ошибке исчезает после заполнения полей', 
+        (WidgetTester tester) async {
+      // Arrange
+      await tester.pumpWidget(const MaterialApp(home: Auth()));
+
+      // Act 1 - вызываем ошибку пустых полей
+      await tester.tap(find.text('Войти'));
+      await tester.pump();
+      
+      // Assert 1 - ошибка присутствует
+      expect(find.text('Заполните все поля'), findsOneWidget);
+
+      // Act 2 - заполняем поля
+      await tester.enterText(find.byType(TextField).at(0), 'testuser');
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.pump();
+
+      // Assert 2 - ошибка исчезает
+      expect(find.text('Заполните все поля'), findsNothing);
+      
+      print('✅ Сообщение об ошибке исчезает после заполнения полей');
+    });
+
+    testWidgets('T-005: Кнопка входа активна при заполненных полях', 
+        (WidgetTester tester) async {
+      // Arrange
+      await tester.pumpWidget(const MaterialApp(home: Auth()));
+
+      // Act - заполняем оба поля
+      await tester.enterText(find.byType(TextField).at(0), 'testuser');
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+      await tester.pump();
+
+      // Assert - кнопка должна быть активна
+      final elevatedButton = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      expect(elevatedButton.enabled, isTrue);
+      
+      print('✅ Кнопка входа активна при заполненных полях');
+    });
   });
 }
