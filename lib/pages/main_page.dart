@@ -3,10 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:school_app/pages/admin_panel.dart';
 import 'package:school_app/pages/director_panel.dart';
+import 'package:school_app/pages/student_grades_page.dart';
+import 'package:school_app/pages/vice_principal_panel.dart';
 import 'package:school_app/pages/teacher_panel.dart';
 import 'package:school_app/pages/chats_page.dart';
 import 'package:school_app/pages/schedule_view_page.dart';
-import 'package:school_app/pages/grades_page.dart';
+import 'package:school_app/pages/student_homework_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -55,6 +57,9 @@ class _MainPageState extends State<MainPage> {
       case 'teacher':
         collectionName = 'teachers';
         break;
+      case 'vice_principal':
+        collectionName = 'vice_principals';
+        break;
       case 'parent':
         collectionName = 'parents';
         break;
@@ -96,19 +101,25 @@ class _MainPageState extends State<MainPage> {
         const ChatsPage(), 
         _buildProfileScreen(),
       ];
+    } else if (_userRole == 'vice_principal') {
+      return [
+        const VicePrincipalPanel(),
+        const ChatsPage(),
+        _buildProfileScreen(),
+      ];
     } else if (_userRole == 'teacher') {
       return [
         const TeacherPanel(),
         const ChatsPage(),
         const ScheduleViewPage(),
-        const GradesPage(),
         _buildProfileScreen(),
       ];
     } else if (_userRole == 'parent') {
       return [
         const ChatsPage(),
         const ScheduleViewPage(),
-        const GradesPage(), 
+        const StudentGradesPage(),
+        const StudentHomeworkPage(),
         _buildProfileScreen(),
       ];
     } else {
@@ -116,7 +127,8 @@ class _MainPageState extends State<MainPage> {
       return [
         const ChatsPage(),
         const ScheduleViewPage(),
-        const GradesPage(), 
+        const StudentGradesPage(), 
+        const StudentHomeworkPage(),
         _buildProfileScreen(),
       ];
     }
@@ -223,6 +235,7 @@ class _MainPageState extends State<MainPage> {
     switch (role) {
       case 'student': return Colors.blue;
       case 'teacher': return Colors.green;
+      case 'vice_principal': return Colors.purple;
       case 'parent': return Colors.orange;
       case 'director': return Colors.red;
       case 'admin': return Colors.teal;
@@ -234,6 +247,7 @@ class _MainPageState extends State<MainPage> {
     switch (role) {
       case 'student': return 'Ученик';
       case 'teacher': return 'Учитель';
+      case 'vice_principal': return 'Завуч';
       case 'parent': return 'Родитель';
       case 'director': return 'Директор';
       case 'admin': return 'Администратор';
@@ -262,6 +276,12 @@ class _MainPageState extends State<MainPage> {
               icon: const Icon(Icons.school),
               onPressed: () => setState(() => _currentIndex = 0),
               tooltip: 'Панель управления',
+            ),
+          if (_userRole == 'vice_principal')
+            IconButton(
+              icon: const Icon(Icons.supervisor_account),
+              onPressed: () => setState(() => _currentIndex = 0),
+              tooltip: 'Панель завуча',
             ),
           if (_userRole == 'teacher')
             IconButton(
@@ -326,6 +346,27 @@ class _MainPageState extends State<MainPage> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.red,
       );
+    } else if (_userRole == 'vice_principal') {
+      return BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.supervisor_account), 
+            label: 'Завуч'
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat), 
+            label: 'Чаты'
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person), 
+            label: 'Профиль'
+          ),
+        ],
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.purple,
+      );
     } else if (_userRole == 'teacher') {
       return BottomNavigationBar(
         currentIndex: _currentIndex,
@@ -342,10 +383,6 @@ class _MainPageState extends State<MainPage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.schedule), 
             label: 'Расписание'
-          ),
-                    BottomNavigationBarItem(
-            icon: Icon(Icons.grade), 
-            label: 'Оценки'
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person), 
@@ -368,9 +405,13 @@ class _MainPageState extends State<MainPage> {
             icon: Icon(Icons.chat), 
             label: 'Расписание'
           ),
-                    BottomNavigationBarItem(
+          BottomNavigationBarItem(
             icon: Icon(Icons.grade), 
             label: 'Оценки'
+          ),
+                    BottomNavigationBarItem(
+            icon: Icon(Icons.person), 
+            label: 'ДЗ'
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person), 
@@ -389,6 +430,7 @@ class _MainPageState extends State<MainPage> {
           BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Чаты'),
           BottomNavigationBarItem(icon: Icon(Icons.schedule), label: 'Расписание'),
           BottomNavigationBarItem(icon: Icon(Icons.grade), label: 'Оценки'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'ДЗ'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
         ],
         type: BottomNavigationBarType.fixed,

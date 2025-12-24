@@ -86,7 +86,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          0, // для reverse: true прокручиваем к 0
+          0,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -138,7 +138,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Список сообщений
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: _chatService.getChatMessages(widget.chatId),
@@ -184,14 +183,13 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                       final messages = snapshot.data!.docs;
                       print('📨 Загружено сообщений: ${messages.length}');
 
-                      // Автопрокрутка к новому сообщению
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         _scrollToBottom();
                       });
 
                       return ListView.builder(
                         controller: _scrollController,
-                        reverse: true, // Важно: новые сообщения внизу
+                        reverse: true, 
                         padding: const EdgeInsets.all(8),
                         itemCount: messages.length,
                         itemBuilder: (context, index) {
@@ -207,7 +205,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                   ),
                 ),
 
-                // Поле ввода сообщения
                 if (_canWrite) _buildMessageInput(),
               ],
             ),
@@ -400,7 +397,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       child: Row(
         children: [
           
-          // Поле ввода
           Expanded(
             child: TextField(
               controller: _messageController,
@@ -416,7 +412,6 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             ),
           ),
           
-          // Кнопка отправки
           IconButton(
             icon: Icon(Icons.send, color: _canWrite ? Colors.blue : Colors.grey),
             onPressed: _canWrite ? _sendMessage : null,

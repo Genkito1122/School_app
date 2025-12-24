@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:school_app/services/subjects_service.dart';
 
 class ScheduleEditorPage extends StatefulWidget {
   final String classId;
   final String className;
+  final bool isVicePrincipal;
 
   const ScheduleEditorPage({
     super.key,
     required this.classId,
     required this.className,
+    this.isVicePrincipal = false,
   });
 
   @override
@@ -20,166 +23,140 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   
-  List<Map<String, dynamic>> _schedule = [];
+  // Данные расписания
+  Map<String, List<Map<String, String>>> _scheduleData = {};
   bool _isLoading = true;
   String _selectedDay = 'monday';
 
-  // Храним контроллеры для избежания инверсного текста
-  final Map<String, Map<int, TextEditingController>> _subjectControllers = {};
-  final Map<String, Map<int, TextEditingController>> _homeworkControllers = {};
-  final Map<String, Map<int, TextEditingController>> _roomControllers = {};
-  final Map<String, Map<int, TextEditingController>> _notesControllers = {};
+  List<Map<String, dynamic>> _schoolSubjects = [];
+  Map<String, List<Map<String, dynamic>>> _subjectTeachers = {};
 
-  final List<String> _days = [
-    'monday',
-    'tuesday', 
-    'wednesday',
-    'thursday',
-    'friday'
-  ];
+  // Контроллеры
+  final Map<String, List<TextEditingController>> _subjectControllers = {};
+  final Map<String, List<TextEditingController>> _roomControllers = {};
 
+  final List<String> _days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
   final List<String> _timeSlots = [
-    '08:00-08:45',
-    '09:00-09:45',
-    '10:00-10:45',
-    '11:00-11:45',
-    '12:00-12:45',
-    '13:00-13:45',
-    '14:00-14:45',
+    '08:00-08:45', '09:00-09:45', '10:00-10:45',
+    '11:00-11:45', '12:00-12:45', '13:00-13:45', '14:00-14:45'
   ];
 
   @override
-  void initState() {
-    super.initState();
+ void initState() {
+  super.initState();
+  _initializeData();
+  _loadSubjects().then((_) {
     _loadSchedule();
-  }
-
+  });
+}
   @override
   void dispose() {
-    // Очищаем все контроллеры
     _clearAllControllers();
     super.dispose();
   }
 
+  void _initializeData() {
+    // Инициализируем структуру данных
+    for (var day in _days) {
+      _scheduleData[day] = [];
+      _subjectControllers[day] = [];
+      _roomControllers[day] = [];
+      
+      for (var time in _timeSlots) {
+        _scheduleData[day]!.add({
+          'time': time,
+          'subject': '',
+          'room': '',
+        });
+        
+        _subjectControllers[day]!.add(TextEditingController());
+        _roomControllers[day]!.add(TextEditingController());
+      }
+    }
+  }
+
   void _clearAllControllers() {
-    for (var dayMap in _subjectControllers.values) {
-      for (var controller in dayMap.values) {
+    for (var day in _days) {
+      for (var controller in _subjectControllers[day]!) {
         controller.dispose();
       }
-    }
-    for (var dayMap in _homeworkControllers.values) {
-      for (var controller in dayMap.values) {
-        controller.dispose();
-      }
-    }
-    for (var dayMap in _roomControllers.values) {
-      for (var controller in dayMap.values) {
-        controller.dispose();
-      }
-    }
-    for (var dayMap in _notesControllers.values) {
-      for (var controller in dayMap.values) {
+      for (var controller in _roomControllers[day]!) {
         controller.dispose();
       }
     }
     _subjectControllers.clear();
-    _homeworkControllers.clear();
     _roomControllers.clear();
-    _notesControllers.clear();
-  }
-
-  void _initializeControllers() {
-    for (var day in _days) {
-      _subjectControllers[day] = {};
-      _homeworkControllers[day] = {};
-      _roomControllers[day] = {};
-      _notesControllers[day] = {};
-      
-      for (int i = 0; i < _timeSlots.length; i++) {
-        _subjectControllers[day]![i] = TextEditingController();
-        _homeworkControllers[day]![i] = TextEditingController();
-        _roomControllers[day]![i] = TextEditingController();
-        _notesControllers[day]![i] = TextEditingController();
-      }
-    }
-  }
-
-  void _updateControllersFromData() {
-    for (int dayIndex = 0; dayIndex < _schedule.length; dayIndex++) {
-      final day = _schedule[dayIndex];
-      final dayName = day['day'];
-      
-      for (int lessonIndex = 0; lessonIndex < day['lessons'].length; lessonIndex++) {
-        final lesson = day['lessons'][lessonIndex];
-        
-        _subjectControllers[dayName]?[lessonIndex]?.text = lesson['subject'] ?? '';
-        _homeworkControllers[dayName]?[lessonIndex]?.text = lesson['homework'] ?? '';
-        _roomControllers[dayName]?[lessonIndex]?.text = lesson['room'] ?? '';
-        _notesControllers[dayName]?[lessonIndex]?.text = lesson['notes'] ?? '';
-      }
-    }
   }
 
   Future<void> _loadSchedule() async {
+    print('🔄 Загрузка расписания для класса ${widget.classId}');
+    
     try {
-      final now = DateTime.now();
-      final weekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
-      
+
       final scheduleDoc = await _firestore
           .collection('schedules')
-          .where('classId', isEqualTo: widget.classId)
-          .where('weekStart', isEqualTo: Timestamp.fromDate(weekStart))
-          .limit(1)
+          .doc(widget.classId)
           .get();
 
-      if (scheduleDoc.docs.isNotEmpty) {
-        final data = scheduleDoc.docs.first.data();
-        setState(() {
-          _schedule = List<Map<String, dynamic>>.from(data['days'] ?? []);
-        });
+      if (scheduleDoc.exists) {
+        print('✅ Найден документ с ID класса');
+        _processScheduleData(scheduleDoc.data()!);
       } else {
-        _initializeEmptySchedule();
+        final scheduleQuery = await _firestore
+            .collection('schedules')
+            .where('classId', isEqualTo: widget.classId)
+            .limit(1)
+            .get();
+
+        if (scheduleQuery.docs.isNotEmpty) {
+          print('✅ Найден документ в запросе');
+          _processScheduleData(scheduleQuery.docs.first.data());
+        } else {
+          print('⚠️ Расписание не найдено, используем пустое');
+          // Оставляем пустую структуру
+        }
       }
     } catch (e) {
-      print('Ошибка загрузки расписания: $e');
-      _initializeEmptySchedule();
+      print('❌ Ошибка загрузки: $e');
     } finally {
-      // Инициализируем контроллеры после загрузки данных
-      _initializeControllers();
-      _updateControllersFromData();
       setState(() => _isLoading = false);
     }
   }
 
-  void _initializeEmptySchedule() {
-    setState(() {
-      _schedule = _days.map((day) => {
-        'day': day,
-        'date': _getDateForDay(day),
-        'lessons': _timeSlots.map((time) => _createEmptyLesson(time)).toList(),
-      }).toList();
-    });
-  }
-
-  Map<String, dynamic> _createEmptyLesson(String time) {
-    return {
-      'time': time,
-      'subject': '',
-      'homework': '',
-      'room': '',
-      'notes': ''
-    };
-  }
-
-  String _getDateForDay(String day) {
-    final now = DateTime.now();
-    final weekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
+  void _processScheduleData(Map<String, dynamic> data) {
+  print('📊 Обработка данных: $data');
+  
+  if (data['days'] != null) {
+    final days = data['days'] as List<dynamic>;
     
-    final dayIndex = _days.indexOf(day);
-    final date = weekStart.add(Duration(days: dayIndex));
+    for (var dayData in days) {
+      final day = dayData['day'] as String;
+      final lessons = dayData['lessons'] as List<dynamic>;
+      
+      if (_scheduleData.containsKey(day)) {
+        for (int i = 0; i < lessons.length && i < _timeSlots.length; i++) {
+          final lesson = lessons[i] as Map<String, dynamic>;
+          
+          // Обновляем данные - ВАЖНО: загружаем все поля!
+          _scheduleData[day]![i] = {
+            'time': _timeSlots[i],
+            'subject': lesson['subject']?.toString() ?? '',
+            'subjectId': lesson['subjectId']?.toString() ?? '',
+            'teacher': lesson['teacher']?.toString() ?? '',
+            'teacherId': lesson['teacherId']?.toString() ?? '',
+            'room': lesson['room']?.toString() ?? '',
+          };
+          
+          // Заполняем контроллеры
+          _subjectControllers[day]![i].text = lesson['subject']?.toString() ?? '';
+          _roomControllers[day]![i].text = lesson['room']?.toString() ?? '';
+        }
+      }
+    }
     
-    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    print('✅ Данные обработаны, загружены учителя');
   }
+ }
 
   String _getDayDisplayName(String day) {
     switch (day) {
@@ -192,285 +169,351 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
     }
   }
 
-  Widget _buildLessonCard(Map<String, dynamic> lesson, int lessonIndex) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            // Заголовок с временем
-            Row(
-              children: [
-                Text(
-                  lesson['time'],
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
-                  onPressed: () => _clearLesson(lessonIndex),
-                  tooltip: 'Очистить урок',
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            
-            // Поле предмета
-            TextField(
-              controller: _subjectControllers[_selectedDay]?[lessonIndex],
-              decoration: const InputDecoration(
-                labelText: 'Предмет',
-                hintText: 'Математика, Русский язык...',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-              onChanged: (value) => _updateLessonField(lessonIndex, 'subject', value),
-            ),
-            const SizedBox(height: 8),
-            
-            // Поле ДЗ
-            TextField(
-              controller: _homeworkControllers[_selectedDay]?[lessonIndex],
-              decoration: const InputDecoration(
-                labelText: 'Домашнее задание',
-                hintText: 'стр. 25-26, упр. 5-8',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-              maxLines: 2,
-              onChanged: (value) => _updateLessonField(lessonIndex, 'homework', value),
-            ),
-            const SizedBox(height: 8),
-            
-            // ФИКС ПЕРЕПОЛНЕНИЯ: Кабинет и заметки в колонке
-            Column(
-              children: [
-                // Кабинет
-                TextField(
-                  controller: _roomControllers[_selectedDay]?[lessonIndex],
-                  decoration: const InputDecoration(
-                    labelText: 'Кабинет',
-                    hintText: '25',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  onChanged: (value) => _updateLessonField(lessonIndex, 'room', value),
-                ),
-                const SizedBox(height: 8),
-                
-                // Заметки
-                TextField(
-                  controller: _notesControllers[_selectedDay]?[lessonIndex],
-                  decoration: const InputDecoration(
-                    labelText: 'Заметки (необязательно)',
-                    hintText: 'Контрольная, принести тетрадь...',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  maxLines: 2,
-                  onChanged: (value) => _updateLessonField(lessonIndex, 'notes', value),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+  Widget _buildLessonCard(int lessonIndex) {
+  final dayData = _scheduleData[_selectedDay]![lessonIndex];
+  final subjectController = _subjectControllers[_selectedDay]![lessonIndex];
+  final roomController = _roomControllers[_selectedDay]![lessonIndex];
+  final teacherController = TextEditingController(); 
+
+  Map<String, dynamic>? selectedSubject;
+  String? selectedSubjectId;
+  
+  if (subjectController.text.isNotEmpty) {
+    selectedSubject = _schoolSubjects.firstWhere(
+      (subject) => subject['subjectName'] == subjectController.text,
+      orElse: () => _schoolSubjects.isNotEmpty ? _schoolSubjects.first : {},
     );
+    selectedSubjectId = selectedSubject?['subjectId'];
   }
 
-  void _updateLessonField(int lessonIndex, String field, String value) {
-    final dayIndex = _days.indexOf(_selectedDay);
-    if (dayIndex < _schedule.length && lessonIndex < _schedule[dayIndex]['lessons'].length) {
-      setState(() {
-        _schedule[dayIndex]['lessons'][lessonIndex][field] = value;
-      });
-    }
-  }
-
-  void _clearLesson(int lessonIndex) {
-    final dayIndex = _days.indexOf(_selectedDay);
-    if (dayIndex < _schedule.length && lessonIndex < _schedule[dayIndex]['lessons'].length) {
-      setState(() {
-        _schedule[dayIndex]['lessons'][lessonIndex] = _createEmptyLesson(
-          _schedule[dayIndex]['lessons'][lessonIndex]['time']
-        );
-        
-        // Очищаем контроллеры
-        _subjectControllers[_selectedDay]?[lessonIndex]?.clear();
-        _homeworkControllers[_selectedDay]?[lessonIndex]?.clear();
-        _roomControllers[_selectedDay]?[lessonIndex]?.clear();
-        _notesControllers[_selectedDay]?[lessonIndex]?.clear();
-      });
-    }
-  }
-
-  Future<void> _saveSchedule() async {
-  if (_currentUser == null) return;
-
-  setState(() => _isLoading = true);
-
-  try {
-    final now = DateTime.now();
-    final weekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
-    final weekEnd = weekStart.add(const Duration(days: 6));
-
-    final teacherDoc = await _firestore.collection('teachers').doc(_currentUser!.uid).get();
-    final teacherName = teacherDoc.data()?['fullName'] ?? 'Учитель';
-
-    // Добавляем информацию об учителе в каждый урок
-    for (var day in _schedule) {
-      for (var lesson in day['lessons']) {
-        if (lesson['subject']?.isNotEmpty == true) {
-          lesson['teacherId'] = _currentUser!.uid;
-          lesson['teacherName'] = teacherName;
-        }
+  return Card(
+    margin: const EdgeInsets.only(bottom: 12),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          // Время урока
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.blue[100],
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              dayData['time']!,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Выбор предмета (Dropdown)
+          DropdownButtonFormField<String>(
+            value: selectedSubjectId,
+            decoration: const InputDecoration(
+              labelText: 'Предмет',
+              border: OutlineInputBorder(),
+            ),
+            items: _schoolSubjects.map((subject) {
+              return DropdownMenuItem<String>(
+                value: subject['subjectId'],
+                child: Text(subject['subjectName']),
+              );
+            }).toList(),
+            onChanged: widget.isVicePrincipal ? (String? newValue) {
+    if (newValue != null) {
+      final subject = _schoolSubjects.firstWhere(
+        (s) => s['subjectId'] == newValue,
+        orElse: () => {'subjectName': ''},
+      );
+      subjectController.text = subject['subjectName'];
+      _scheduleData[_selectedDay]![lessonIndex]['subject'] = subject['subjectName'];
+      _scheduleData[_selectedDay]![lessonIndex]['subjectId'] = newValue;
+      
+      // Автоматически выбираем первого учителя предмета
+      final teachers = _subjectTeachers[newValue] ?? [];
+      if (teachers.isNotEmpty) {
+        _scheduleData[_selectedDay]![lessonIndex]['teacher'] = teachers.first['teacherName'];
+        _scheduleData[_selectedDay]![lessonIndex]['teacherId'] = teachers.first['teacherId'];
       }
+      
+      setState(() {});
     }
-
-    await _firestore.collection('schedules').doc('${widget.classId}_${weekStart.millisecondsSinceEpoch}').set({
-      'scheduleId': '${widget.classId}_${weekStart.millisecondsSinceEpoch}',
-      'classId': widget.classId,
-      'className': widget.className,
-      'schoolId': teacherDoc.data()?['schoolId'],
-      'weekStart': Timestamp.fromDate(weekStart),
-      'weekEnd': Timestamp.fromDate(weekEnd),
-      
-      // ✅ ДОБАВЛЕНЫ ЯВНЫЕ СВЯЗИ:
-      'createdBy': _currentUser!.uid,
-      'createdByRef': 'teachers/${_currentUser!.uid}',
-      'createdByTeacherName': teacherName,
-      
-      'days': _schedule,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Расписание сохранено!'),
-        backgroundColor: Colors.green,
+  } : null,
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Выбор учителя (если предмет выбран)
+          if (selectedSubjectId != null && 
+              _subjectTeachers.containsKey(selectedSubjectId) &&
+              _subjectTeachers[selectedSubjectId]!.isNotEmpty)
+            DropdownButtonFormField<String>(
+              value: _scheduleData[_selectedDay]![lessonIndex]['teacherId'],
+              decoration: const InputDecoration(
+                labelText: 'Учитель',
+                border: OutlineInputBorder(),
+              ),
+              items: _subjectTeachers[selectedSubjectId]!.map((teacher) {
+                return DropdownMenuItem<String>(
+                  value: teacher['teacherId'],
+                  child: Text(teacher['teacherName']),
+                );
+              }).toList(),
+              onChanged: widget.isVicePrincipal ? (String? newValue) {
+    if (newValue != null) {
+      final teacher = _subjectTeachers[selectedSubjectId]!.firstWhere(
+        (t) => t['teacherId'] == newValue,
+      );
+      _scheduleData[_selectedDay]![lessonIndex]['teacher'] = teacher['teacherName'];
+      _scheduleData[_selectedDay]![lessonIndex]['teacherId'] = newValue;
+    }
+  } : null,
+            ),
+          
+          const SizedBox(height: 8),
+          
+          // Кабинет
+          TextField(
+            controller: roomController,
+            decoration: const InputDecoration(
+              labelText: 'Кабинет',
+              hintText: '25',
+              border: OutlineInputBorder(),
+            ),
+            enabled: widget.isVicePrincipal,
+            onChanged: (value) {
+              _scheduleData[_selectedDay]![lessonIndex]['room'] = value;
+            },
+          ),
+        ],
       ),
-    );
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Ошибка сохранения: $e'),
-        backgroundColor: Colors.red,
-      ),
-    );
-  } finally {
-    setState(() => _isLoading = false);
-  }
+    ),
+  );
  }
 
+  Future<void> _saveSchedule() async {
+    if (_currentUser == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Подготавливаем данные для сохранения
+      final daysToSave = _days.map((day) {
+       return {
+         'day': day,
+         'lessons': _scheduleData[day]!.map((lesson) {
+           return {
+             'time': lesson['time'],
+            'subject': lesson['subject'],
+            'subjectId': lesson['subjectId'],
+            'teacher': lesson['teacher'],
+            'teacherId': lesson['teacherId'],
+             'room': lesson['room'],
+        };
+          }).toList(),
+        };
+       }).toList();
+
+      print('💾 Сохранение расписания...');
+      print('📅 Дней: ${daysToSave.length}');
+      print('📝 Данные первого дня: ${daysToSave.first}');
+
+      // Сохраняем под ID класса (один документ на класс)
+      await _firestore.collection('schedules').doc(widget.classId).set({
+        'scheduleId': widget.classId,
+        'classId': widget.classId,
+        'className': widget.className,
+        'isPermanent': true,
+        'createdBy': _currentUser!.uid,
+        'createdByName': widget.isVicePrincipal ? 'Завуч' : 'Учитель',
+        'days': daysToSave,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      print('✅ Расписание сохранено!');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Расписание сохранено!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
+    } catch (e) {
+      print('❌ Ошибка сохранения: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка сохранения: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _clearDay() {
+    if (!widget.isVicePrincipal) return;
+    
+    for (int i = 0; i < _timeSlots.length; i++) {
+      _scheduleData[_selectedDay]![i] = {
+        'time': _timeSlots[i],
+        'subject': '',
+        'room': '',
+      };
+      _subjectControllers[_selectedDay]![i].clear();
+      _roomControllers[_selectedDay]![i].clear();
+    }
+    
+    setState(() {});
+  }
+
   @override
-Widget build(BuildContext context) {
-  if (_isLoading && _schedule.isEmpty) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
-    );
-  }
-
-  // ✅ ФИКС: Исправляем проблему с firstWhere
-  Map<String, dynamic> currentDay;
-  try {
-    currentDay = _schedule.firstWhere(
-      (day) => day['day'] == _selectedDay,
-    );
-  } catch (e) {
-    // Если день не найден, используем первый день или создаем пустой
-    currentDay = _schedule.isNotEmpty 
-        ? _schedule.first 
-        : {
-            'day': 'monday',
-            'lessons': _timeSlots.map((time) => _createEmptyLesson(time)).toList(),
-          };
-  }
-
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Расписание - ${widget.className}'),
-        backgroundColor: Colors.green,
+        backgroundColor: widget.isVicePrincipal ? Colors.purple : Colors.green,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: _isLoading 
-                ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                : const Icon(Icons.save),
-            onPressed: _isLoading ? null : _saveSchedule,
-            tooltip: 'Сохранить расписание',
-          ),
+          if (widget.isVicePrincipal) ...[
+            IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              onPressed: _clearDay,
+              tooltip: 'Очистить день',
+            ),
+            IconButton(
+              icon: _isLoading 
+                  ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                  : const Icon(Icons.save),
+              onPressed: _isLoading ? null : _saveSchedule,
+              tooltip: 'Сохранить расписание',
+            ),
+          ],
         ],
       ),
-      body: Column(
-        children: [
-          // Выбор дня недели
-          Container(
-            height: 70,
-            color: Colors.grey[100],
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _schedule.length,
-              itemBuilder: (context, index) {
-                final day = _schedule[index];
-                final isSelected = day['day'] == _selectedDay;
-                
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedDay = day['day']),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    margin: const EdgeInsets.all(6),
-                    constraints: const BoxConstraints(minWidth: 65),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.green : Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.green),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _getDayDisplayName(day['day']).substring(0, 3),
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.green,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Выбор дня недели
+                Container(
+                  height: 70,
+                  color: Colors.grey[100],
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _days.length,
+                    itemBuilder: (context, index) {
+                      final day = _days[index];
+                      final isSelected = day == _selectedDay;
+                      final bgColor = widget.isVicePrincipal ? Colors.purple : Colors.green;
+                      
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedDay = day),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          margin: const EdgeInsets.all(6),
+                          constraints: const BoxConstraints(minWidth: 65),
+                          decoration: BoxDecoration(
+                            color: isSelected ? bgColor : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: bgColor),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _getDayDisplayName(day).substring(0, 3),
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : bgColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'День ${index + 1}',
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : bgColor,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          day['date']?.split('.').first ?? '',
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.green,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                      );
+                    },
+                  ),
+                ),
+
+                // Информация
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  color: Colors.blue[50],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        widget.isVicePrincipal ? Icons.edit : Icons.visibility,
+                        size: 16,
+                        color: Colors.blue,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        widget.isVicePrincipal 
+                          ? 'Редактирование - ${_getDayDisplayName(_selectedDay)}'
+                          : 'Просмотр - ${_getDayDisplayName(_selectedDay)}',
+                        style: const TextStyle(color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Расписание
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: ListView.builder(
+                      itemCount: _timeSlots.length,
+                      itemBuilder: (context, index) {
+                        return _buildLessonCard(index);
+                      },
                     ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
-          ),
-
-          // Список уроков
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ListView.builder(
-                itemCount: currentDay['lessons'].length,
-                itemBuilder: (context, index) {
-                  return _buildLessonCard(currentDay['lessons'][index], index);
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
+
+ Future<void> _loadSubjects() async {
+  try {
+    // Получаем schoolId из класса
+    final classDoc = await _firestore.collection('classes').doc(widget.classId).get();
+    final schoolId = classDoc.data()?['schoolId'];
+    
+    if (schoolId == null) return;
+
+    // Используем SubjectsService
+    final subjectsService = SubjectsService();
+    _schoolSubjects = await subjectsService.getSubjectsForSchedule(schoolId);
+    
+    // Собираем учителей для каждого предмета
+    for (final subject in _schoolSubjects) {
+      final teachers = subject['teachers'] as List<Map<String, dynamic>>;
+      _subjectTeachers[subject['subjectId']] = teachers;
+    }
+    
+    print('✅ Загружено предметов: ${_schoolSubjects.length}');
+  } catch (e) {
+    print('❌ Ошибка загрузки предметов: $e');
+  }
+ } 
 }

@@ -639,7 +639,7 @@ class _AdminPanelState extends State<AdminPanel> {
   Future<void> _generateAdminCode() async {
   try {
     final newCode = await _codeService.generateAdminCode(
-      createdByAdminId: _currentUser!.uid // ← Передаем ID админа
+      createdByAdminId: _currentUser!.uid 
     );
     
     await Future.delayed(const Duration(milliseconds: 500));

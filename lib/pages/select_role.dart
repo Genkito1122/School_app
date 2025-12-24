@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:school_app/services/code_service.dart';
 import 'package:school_app/pages/profile_setup.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SelectRolePage extends StatefulWidget {
   final String uid;
@@ -14,6 +15,7 @@ class _SelectRolePageState extends State<SelectRolePage> {
   String? selectedRole;
   bool _isLoading = false;
   final CodeService _codeService = CodeService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   final List<Map<String, dynamic>> roles = [
     {
@@ -29,6 +31,13 @@ class _SelectRolePageState extends State<SelectRolePage> {
       'icon': Icons.person,
       'needsCode': true,
       'codeType': 'teacher',
+    },
+    {
+      'value': 'vice_principal', // ДОБАВЛЯЕМ ЗАВУЧА
+      'label': 'Завуч',
+      'icon': Icons.supervisor_account,
+      'needsCode': true,
+      'codeType': 'vice_principal',
     },
     {
       'value': 'parent',
@@ -48,6 +57,7 @@ class _SelectRolePageState extends State<SelectRolePage> {
   // Для ролей с кодом
   final Map<String, TextEditingController> _codeControllers = {};
   Map<String, dynamic>? _teacherSchoolInfo;
+  Map<String, dynamic>? _vicePrincipalSchoolInfo; // ДЛЯ ЗАВУЧА
   Map<String, dynamic>? _studentClassInfo;
   String? _adminCode;
 
@@ -78,15 +88,14 @@ class _SelectRolePageState extends State<SelectRolePage> {
         return;
       }
 
-      if (mounted) setState(() => _isLoading = true);
+      setState(() => _isLoading = true);
 
       try {
         if (role['codeType'] == 'student') {
-          // Проверка кода ученика
-          final classInfo = await _codeService.verifyStudentCode(code);
+          final classInfo = await _codeService.verifyClassCode(code); 
           if (classInfo == null) {
-            _showError('Неверный код ученика');
-            return;
+           _showError('Неверный код класса');
+         return;
           }
           _studentClassInfo = classInfo;
           
@@ -99,9 +108,17 @@ class _SelectRolePageState extends State<SelectRolePage> {
           }
           _teacherSchoolInfo = schoolInfo;
           
+        } else if (role['codeType'] == 'vice_principal') {
+          // Проверка кода завуча
+          final schoolInfo = await _codeService.verifyVicePrincipalCode(code);
+          if (schoolInfo == null) {
+            _showError('Неверный код завуча');
+            return;
+          }
+          _vicePrincipalSchoolInfo = schoolInfo;
+          
         } else if (role['codeType'] == 'admin') {
           final isValid = await _codeService.verifyAdminCode(code);
-          print('✅ Результат проверки admin кода: $isValid');
           
           if (!isValid) {
             _showError('Неверный код администратора');
@@ -116,7 +133,7 @@ class _SelectRolePageState extends State<SelectRolePage> {
       } catch (e) {
         _showError('Ошибка проверки кода: $e');
       } finally {
-        if (mounted) setState(() => _isLoading = false);
+        setState(() => _isLoading = false);
       }
     } else {
       // Роли без кода - сразу переходим
@@ -125,13 +142,21 @@ class _SelectRolePageState extends State<SelectRolePage> {
   }
 
   void _proceedToProfile() {
+    // Передаем соответствующую информацию в зависимости от роли
+    Map<String, dynamic>? schoolInfo;
+    if (selectedRole == 'teacher') {
+      schoolInfo = _teacherSchoolInfo;
+    } else if (selectedRole == 'vice_principal') {
+      schoolInfo = _vicePrincipalSchoolInfo;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (context) => ProfileSetupPage(
           uid: widget.uid,
           role: selectedRole!,
-          teacherSchoolInfo: _teacherSchoolInfo,
+          teacherSchoolInfo: schoolInfo,
           studentClassInfo: _studentClassInfo,
           adminCode: _adminCode,
         ),
@@ -140,9 +165,36 @@ class _SelectRolePageState extends State<SelectRolePage> {
   }
 
   void _showError(String message) {
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  // НОВЫЙ МЕТОД: Выход из аккаунта
+  Future<void> _logout() async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Выйти?'),
+        content: const Text('Вы действительно хотите выйти? Весь прогресс будет потерян.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _auth.signOut();
+              // Возвращаемся к авторизации
+              if (mounted) {
+                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+              }
+            },
+            child: const Text('Выйти', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -153,6 +205,14 @@ class _SelectRolePageState extends State<SelectRolePage> {
         title: const Text('Выберите роль'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
+        actions: [
+          // НОВАЯ КНОПКА ВЫХОДА В AppBar
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _logout,
+            tooltip: 'Выйти',
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -180,49 +240,31 @@ class _SelectRolePageState extends State<SelectRolePage> {
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),
                     color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.white,
-                    child: InkWell(
-                      onTap: () {
-                        if (mounted) {
-                          setState(() {
-                            selectedRole = role['value'];
-                          });
-                        }
-                      },
-                      child: Column(
-                        children: [
-                          ListTile(
-                            leading: Icon(role['icon'], color: Colors.blue),
-                            title: Text(role['label']),
-                            trailing: isSelected 
-                                ? const Icon(Icons.check_circle, color: Colors.blue)
-                                : null,
-                          ),
-                          
-                          // Поле для кода (если нужно)
-                          if (isSelected && role['needsCode'] == true)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              child: TextField(
-                                controller: _codeControllers[role['value']],
-                                decoration: InputDecoration(
-                                  labelText: role['codeType'] == 'student' 
-                                      ? 'Код ученика'
-                                      : role['codeType'] == 'teacher'
-                                          ? 'Код учителя' 
-                                          : 'Код администратора',
-                                  hintText: role['codeType'] == 'student'
-                                      ? 'Получите у учителя'
-                                      : role['codeType'] == 'teacher'
-                                          ? 'Получите у директора'
-                                          : 'Получите у администратора',
-                                  border: const OutlineInputBorder(),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                ),
-                                enabled: !_isLoading,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: Icon(role['icon'], color: Colors.blue),
+                          title: Text(role['label']),
+                          trailing: isSelected 
+                              ? const Icon(Icons.check_circle, color: Colors.blue)
+                              : null,
+                          onTap: () => setState(() => selectedRole = role['value']),
+                        ),
+                        
+                        // Поле для кода (если нужно)
+                        if (isSelected && role['needsCode'] == true)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: TextField(
+                              controller: _codeControllers[role['value']],
+                              decoration: InputDecoration(
+                                labelText: _getCodeLabel(role['codeType']),
+                                hintText: _getCodeHint(role['codeType']),
+                                border: const OutlineInputBorder(),
                               ),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
                   );
                 },
@@ -230,6 +272,8 @@ class _SelectRolePageState extends State<SelectRolePage> {
             ),
             
             const SizedBox(height: 20),
+            
+            // Кнопка продолжить
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -239,24 +283,54 @@ class _SelectRolePageState extends State<SelectRolePage> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
+                    ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
                         'Продолжить',
                         style: TextStyle(fontSize: 16, color: Colors.white),
                       ),
               ),
             ),
+            
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _logout,
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text(
+                  'Выйти',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  // Вспомогательные методы для текста кодов
+  String _getCodeLabel(String codeType) {
+    switch (codeType) {
+      case 'student': return 'Код класса';
+      case 'teacher': return 'Код учителя';
+      case 'vice_principal': return 'Код завуча';
+      case 'admin': return 'Код администратора';
+      default: return 'Код';
+    }
+  }
+
+  String _getCodeHint(String codeType) {
+    switch (codeType) {
+      case 'student': return 'Получите у классного руководителя';
+      case 'teacher': return 'Получите у директора';
+      case 'vice_principal': return 'Получите у директора';
+      case 'admin': return 'Получите у администратора системы';
+      default: return 'Введите код';
+    }
   }
 
   @override

@@ -62,22 +62,18 @@ class _AnnouncementPageState extends State<AnnouncementPage> with SingleTickerPr
       body: TabBarView(
         controller: _tabController,
         children: [
-          // ВКЛАДКА СОЗДАНИЯ
           _buildCreateTab(),
-          // ВКЛАДКА ИСТОРИИ
           _buildHistoryTab(),
         ],
       ),
     );
   }
 
-  // Остальной код без изменений...
   Widget _buildCreateTab() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // Выбор получателей
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -121,7 +117,6 @@ class _AnnouncementPageState extends State<AnnouncementPage> with SingleTickerPr
 
           const SizedBox(height: 16),
 
-          // Поле ввода текста
           Expanded(
             child: TextField(
               controller: _textController,
@@ -216,7 +211,6 @@ class _AnnouncementPageState extends State<AnnouncementPage> with SingleTickerPr
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок объявления
             Row(
               children: [
                 Icon(Icons.campaign, size: 16, color: Colors.orange[700]),
@@ -238,7 +232,6 @@ class _AnnouncementPageState extends State<AnnouncementPage> with SingleTickerPr
             
             const SizedBox(height: 8),
             
-            // Текст объявления
             Text(
               data['text'] ?? '',
               style: const TextStyle(fontSize: 16),
@@ -246,7 +239,6 @@ class _AnnouncementPageState extends State<AnnouncementPage> with SingleTickerPr
             
             const SizedBox(height: 8),
             
-            // Отправитель
             Text(
               'От: ${data['senderName']}',
               style: const TextStyle(fontSize: 12, color: Colors.grey),

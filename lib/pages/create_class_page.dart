@@ -69,7 +69,6 @@ class _CreateClassPageState extends State<CreateClassPage> {
     try {
       final classId = _firestore.collection('classes').doc().id;
       
-      // 1. Создаем класс в Firestore
       await _firestore.collection('classes').doc(classId).set({
         'classId': classId,
         'name': _classNameController.text.trim(),
@@ -81,12 +80,10 @@ class _CreateClassPageState extends State<CreateClassPage> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // 2. Обновляем учителя - добавляем класс в его список
       await _firestore.collection('teachers').doc(_selectedTeacherId!).update({
         'classIds': FieldValue.arrayUnion([classId]),
       });
 
-      // 3. Создаем чат класса
       final selectedTeacher = _availableTeachers.firstWhere(
         (teacher) => teacher['id'] == _selectedTeacherId
       );
@@ -130,12 +127,12 @@ class _CreateClassPageState extends State<CreateClassPage> {
       ),
       body: Form(
         key: _formKey,
-        child: SingleChildScrollView( // ✅ ДОБАВЛЕНО: Обертка для скролла
+        child: SingleChildScrollView( 
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Информация о школе
+
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -168,7 +165,6 @@ class _CreateClassPageState extends State<CreateClassPage> {
 
               const SizedBox(height: 24),
 
-              // Поле названия класса
               TextFormField(
                 controller: _classNameController,
                 decoration: const InputDecoration(
@@ -187,7 +183,6 @@ class _CreateClassPageState extends State<CreateClassPage> {
 
               const SizedBox(height: 20),
 
-              // Выбор классного руководителя
               const Text(
                 'Классный руководитель:',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -246,7 +241,6 @@ class _CreateClassPageState extends State<CreateClassPage> {
 
               const SizedBox(height: 30),
 
-              // Кнопка создания
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(

@@ -55,13 +55,47 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     }
   }
 
-  @override
+  // НОВЫЙ МЕТОД: Выход из аккаунта
+  Future<void> _logout() async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Выйти?'),
+        content: const Text('Вы действительно хотите выйти? Все введённые данные будут потеряны.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _auth.signOut();
+              // Возвращаемся к авторизации
+              Navigator.pushReplacementNamed(context, '/');
+            },
+            child: const Text('Выйти', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+ @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Заполните профиль'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
+        actions: [
+          // НОВАЯ КНОПКА ВЫХОДА В AppBar
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _logout,
+            tooltip: 'Выйти',
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -93,6 +127,22 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
               const SizedBox(height: 30),
               _buildSubmitButton(),
+              
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _logout,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text(
+                    'Выйти',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -116,6 +166,12 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
         description = widget.teacherSchoolInfo != null 
             ? 'Школа: ${widget.teacherSchoolInfo!['schoolName']}'
             : 'Заполните данные учителя';
+        break;
+      case 'vice_principal': 
+        title = 'Данные завуча';
+        description = widget.teacherSchoolInfo != null 
+            ? 'Школа: ${widget.teacherSchoolInfo!['schoolName']}'
+            : 'Заполните данные завуча';
         break;
       case 'parent':
         title = 'Данные родителя';
@@ -149,6 +205,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     );
   }
 
+  // Остальной код без изменений...
   List<Widget> _buildRoleSpecificFields() {
     switch (widget.role) {
       case 'student':
@@ -240,6 +297,48 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             },
           ),
         ];
+      
+      case 'vice_principal':
+      return [
+        if (widget.teacherSchoolInfo != null)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.green),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Школа: ${widget.teacherSchoolInfo!['schoolName']}',
+                    style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _phoneController,
+          decoration: const InputDecoration(
+            labelText: 'Телефон',
+            prefixIcon: Icon(Icons.phone),
+            border: OutlineInputBorder(),
+            hintText: '+7 (999) 123-45-67',
+          ),
+          keyboardType: TextInputType.phone,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Введите телефон';
+            }
+            return null;
+          },
+        ),
+      ];
 
       case 'parent':
         return [
@@ -429,12 +528,12 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             studentName: _fullNameController.text,
           );
 
-          if (widget.usedStudentCode != null) {
-            await _codeService.useStudentCode(
-              widget.studentClassInfo!['classId'],
-              widget.usedStudentCode!
+          if (widget.studentClassInfo?['classCode'] != null) {
+             await _codeService.useClassCode(
+             widget.studentClassInfo!['classId'],
+             widget.studentClassInfo!['classCode']
             );
-          }
+}
           break;
 
         case 'teacher':
@@ -464,8 +563,26 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
           }
           break;
 
+        case 'vice_principal': 
+         await _firestore.collection('vice_principals').doc(widget.uid).set({
+          'uid': widget.uid,
+          'fullName': _fullNameController.text,
+          'schoolId': widget.teacherSchoolInfo!['schoolId'],
+          'schoolName': widget.teacherSchoolInfo!['schoolName'],
+          'phone': _phoneController.text,
+          'email': userEmail,
+          'permissions': ['edit_schedule', 'view_all_classes', 'manage_teachers'],
+          'createdAt': FieldValue.serverTimestamp(),
+    
+         });
+         await _chatService.updateTeachersChatOnNewTeacher(
+          widget.teacherSchoolInfo!['schoolId'],
+          widget.uid,
+          _fullNameController.text,
+         );
+         break;
+
         case 'parent':
-          // Ищем ребенка по email
           final childStudent = await _findStudentByEmail(_childEmailController.text.trim());
           if (childStudent == null) {
             _showError('Ученик с таким email не найден');
@@ -483,12 +600,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             'createdAt': FieldValue.serverTimestamp(),
           });
 
-          // Обновляем запись ученика - добавляем parentId
           await _firestore.collection('students').doc(childStudent['uid']).update({
             'parentIds': FieldValue.arrayUnion([widget.uid]),
           });
 
-          // Добавляем родителя в классный чат ребенка
           await _addParentToClassChat(
             parentId: widget.uid,
             parentName: _fullNameController.text,
@@ -526,7 +641,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     adminCode: adminCode,
   );
 
-  // ✅ ИСПОЛЬЗОВАТЬ КОД С ССЫЛКОЙ НА ДИРЕКТОРА
   await _codeService.useAdminCode(adminCode, widget.uid);
   
   _showSuccess('Заявка отправлена! Ожидайте подтверждения администратора.');
@@ -554,7 +668,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     }
   }
 
-  // Вспомогательные методы
   Future<Map<String, dynamic>?> _findStudentByEmail(String email) async {
     try {
       final snapshot = await _firestore
@@ -625,6 +738,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     switch (role) {
       case 'student': return const Icon(Icons.school, size: 32, color: Colors.blue);
       case 'teacher': return const Icon(Icons.person, size: 32, color: Colors.green);
+      case 'vice_principal': return const Icon(Icons.supervisor_account, size: 32, color: Colors.purple);
       case 'parent': return const Icon(Icons.family_restroom, size: 32, color: Colors.orange);
       case 'director': return const Icon(Icons.admin_panel_settings, size: 32, color: Colors.red);
       default: return const Icon(Icons.person, size: 32);

@@ -9,15 +9,31 @@ import 'package:school_app/pages/select_role.dart';
 import 'package:school_app/pages/main_page.dart';
 import 'package:school_app/services/admin_setup.dart';
 import 'package:school_app/pages/profile_setup.dart';
+import 'package:school_app/services/homework_service.dart';
+import 'dart:async';
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   
-  await AdminSetup().createDefaultAdmin();
+
+  _startHomeworkCleanup();
   
   runApp(const MyApp());
+}
+
+
+void _startHomeworkCleanup() {
+  Timer.periodic(const Duration(hours: 24), (timer) async {
+    try {
+      final homeworkService = HomeworkService();
+      await homeworkService.deactivateExpiredHomeworks();
+      print('✅ Автоматическая очистка просроченных ДЗ выполнена');
+    } catch (e) {
+      print('❌ Ошибка автоматической очистки ДЗ: $e');
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {

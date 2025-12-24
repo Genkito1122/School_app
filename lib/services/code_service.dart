@@ -4,8 +4,7 @@ import 'package:school_app/services/chat_service.dart';
 class CodeService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-
-  ///ADMIN
+  /// ADMIN 
   Future<String> generateAdminCode({String? createdByAdminId}) async {
     final newCode = 'ADM${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
     
@@ -78,9 +77,88 @@ class CodeService {
     });
   }
 
+  // Zavuch
+  
+  Future<String> generateVicePrincipalCode(String schoolId) async {
+    try {
+      print('🔄 generateVicePrincipalCode вызван с schoolId: "$schoolId"');
+      
+      if (schoolId.isEmpty) {
+        throw Exception('School ID is empty');
+      }
 
+      final newCode = 'VPR${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+      print('🎯 Сгенерирован код завуча: $newCode');
 
-  //DIRECTOR
+      final schoolDoc = await _firestore.collection('schools').doc(schoolId).get();
+      if (!schoolDoc.exists) {
+        throw Exception('Школа с ID $schoolId не найдена');
+      }
+
+      print('✅ Школа найдена, обновляем vicePrincipalCodes...');
+      
+      await _firestore.collection('schools').doc(schoolId).update({
+        'vicePrincipalCodes': FieldValue.arrayUnion([newCode]),
+      });
+
+      print('✅ Код завуча $newCode добавлен в школу $schoolId');
+      return newCode;
+    } catch (e) {
+      print('❌ Ошибка в generateVicePrincipalCode: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> verifyVicePrincipalCode(String code) async {
+    try {
+      print('🔍 Проверка кода завуча: $code');
+      
+      final snapshot = await _firestore
+          .collection('schools')
+          .where('vicePrincipalCodes', arrayContains: code)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        final school = snapshot.docs.first;
+        return {
+          'schoolId': school.id,
+          'schoolName': school.data()['name'],
+          'isValid': true,
+        };
+      }
+      print('❌ Код завуча не найден: $code');
+      return null;
+    } catch (e) {
+      print('❌ Ошибка проверки кода завуча: $e');
+      return null;
+    }
+  }
+
+  Future<void> useVicePrincipalCode(String schoolId, String code) async {
+    try {
+      await _firestore.collection('schools').doc(schoolId).update({
+        'vicePrincipalCodes': FieldValue.arrayRemove([code]),
+      });
+      print('✅ Код завуча $code использован и удален');
+    } catch (e) {
+      print('❌ Ошибка использования кода завуча: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<String>> getSchoolVicePrincipalCodes(String schoolId) async {
+    try {
+      final doc = await _firestore.collection('schools').doc(schoolId).get();
+      return List<String>.from(doc.data()?['vicePrincipalCodes'] ?? []);
+    } catch (e) {
+      print('❌ Ошибка получения кодов завучей: $e');
+      return [];
+    }
+  }
+
+  //Director
+  
   Future<void> createDirectorRequest({
     required String userId,
     required String fullName,
@@ -106,7 +184,6 @@ class CodeService {
       'adminCode': adminCode,
       'status': 'pending',
       'directorCode': _generateDirectorCode(),
-      
       'applicantUserRef': 'users/$userId',
       'processedBy': null,
       'processedByRef': null,
@@ -144,17 +221,16 @@ class CodeService {
     }
 
     final requestData = requestDoc.data()!;
-
-
     final schoolCode = _generateSchoolCode();
     
-
+  
     final schoolRef = await _firestore.collection('schools').add({
       'name': requestData['schoolName'],
       'address': requestData['schoolAddress'],
       'directorId': requestData['applicantId'],
       'schoolCode': schoolCode,
       'teacherCodes': [],
+      'vicePrincipalCodes': [], // ДОБАВЛЯЕМ ЭТО
       'createdBy': adminId,
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -178,7 +254,6 @@ class CodeService {
       'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-
     await _firestore.collection('admin_requests').doc(requestId).update({
       'status': 'approved',
       'processedBy': adminId,
@@ -189,7 +264,6 @@ class CodeService {
       'schoolCode': schoolCode,
       'schoolRef': 'schools/${schoolRef.id}',
     });
-
 
     if (requestData['applicantId'] != null) {
       await _firestore.collection('users').doc(requestData['applicantId']).update({
@@ -221,8 +295,8 @@ class CodeService {
     });
   }
 
-
-  ///TEACHER
+  // Teacher
+  
   Future<String> generateTeacherCode(String schoolId) async {
     try {
       print('generateTeacherCode вызван с schoolId: "$schoolId"');
@@ -232,7 +306,7 @@ class CodeService {
       }
 
       final newCode = 'TCH${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-      print(' Сгенерирован код: $newCode');
+      print('Сгенерирован код: $newCode');
 
       final schoolDoc = await _firestore.collection('schools').doc(schoolId).get();
       if (!schoolDoc.exists) {
@@ -247,7 +321,6 @@ class CodeService {
 
       print('Код $newCode добавлен в школу $schoolId');
       return newCode;
-
     } catch (e) {
       print('Ошибка в generateTeacherCode: $e');
       rethrow;
@@ -294,47 +367,71 @@ class CodeService {
     });
   }
 
-
-
-  //STUDENT
-  Future<Map<String, dynamic>?> verifyStudentCode(String code) async {
-    try {
-      final snapshot = await _firestore
-          .collection('classes')
-          .where('studentCodes', arrayContains: code)
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isNotEmpty) {
-        final classData = snapshot.docs.first;
-        final classId = classData.id;
-        final classInfo = classData.data();
-        
-        final schoolDoc = await _firestore.collection('schools').doc(classInfo['schoolId']).get();
-        
-        return {
-          'classId': classId,
-          'className': classInfo['name'],
-          'schoolId': classInfo['schoolId'],
-          'schoolName': schoolDoc.data()?['name'] ?? 'Школа',
-          'teacherId': classInfo['teacherId'],
-          'isValid': true,
-        };
-      }
-      return null;
-    } catch (e) {
-      print('Ошибка проверки кода ученика: $e');
-      return null;
-    }
-  }
-
-  Future<void> useStudentCode(String classId, String code) async {
-    await _firestore.collection('classes').doc(classId).update({
-      'studentCodes': FieldValue.arrayRemove([code]),
+  Future<void> revokeVicePrincipalCode(String schoolId, String code) async {
+    await _firestore.collection('schools').doc(schoolId).update({
+      'vicePrincipalCodes': FieldValue.arrayRemove([code]),
     });
   }
 
+  // Student
+  
+  Future<Map<String, dynamic>?> verifyClassCode(String code) async {
+  try {
+    final snapshot = await _firestore
+        .collection('classes')
+        .where('classCode', isEqualTo: code)
+        .limit(1)
+        .get();
 
+    if (snapshot.docs.isNotEmpty) {
+      final classDoc = snapshot.docs.first;
+      final classData = classDoc.data();
+      
+      // Получаем информацию о школе
+      final schoolDoc = await _firestore
+          .collection('schools')
+          .doc(classData['schoolId'])
+          .get();
+      
+      return {
+        'classId': classDoc.id,
+        'className': classData['name'],
+        'schoolId': classData['schoolId'],
+        'schoolName': schoolDoc.data()?['name'] ?? 'Школа',
+        'teacherId': classData['teacherId'],
+        'isValid': true,
+      };
+    }
+    return null;
+  } catch (e) {
+    print('Ошибка проверки кода класса: $e');
+    return null;
+  }
+}
+
+  Future<String> generateClassCode(String classId) async {
+  final newCode = 'CLS${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+  
+  // Сохраняем код в документе класса
+  await _firestore.collection('classes').doc(classId).update({
+    'classCode': newCode, // ← ОДИН код на весь класс
+    'classCodeGeneratedAt': FieldValue.serverTimestamp(),
+    'classCodeGeneratedBy': 'teacher',
+  });
+  
+  return newCode;
+}
+
+
+  Future<void> useClassCode(String classId, String code) async {
+  await _firestore.collection('class_code_usage').add({
+    'classId': classId,
+    'code': code,
+    'usedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+  
   Future<bool> verifyUserExists(String userId) async {
     try {
       final userDoc = await _firestore.collection('users').doc(userId).get();
@@ -375,6 +472,7 @@ class CodeService {
       final usersByRole = {
         'admin': 0,
         'director': 0,
+        'vice_principal': 0, 
         'teacher': 0,
         'student': 0,
         'parent': 0,
@@ -400,7 +498,6 @@ class CodeService {
 
       print('Статистика загружена: $stats');
       return stats;
-
     } catch (e) {
       print('Ошибка загрузки статистики: $e');
       return {
@@ -413,6 +510,7 @@ class CodeService {
         'usersByRole': {
           'admin': 0,
           'director': 0,
+          'vice_principal': 0,
           'teacher': 0,
           'student': 0,
           'parent': 0,

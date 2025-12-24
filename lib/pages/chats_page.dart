@@ -33,7 +33,6 @@ class _ChatsPageState extends State<ChatsPage> {
     return const Center(child: Text('Нет чатов'));
   }
 
-  // СОРТИРУЕМ НА КЛИЕНТЕ
   final chats = _sortChatsByTime(snapshot.data!.docs);
 
   return ListView.builder(
@@ -82,7 +81,6 @@ class _ChatsPageState extends State<ChatsPage> {
               lastMessageTime,
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
-            // Можно добавить badge с количеством непрочитанных
           ],
         ),
         onTap: () {
@@ -134,12 +132,10 @@ class _ChatsPageState extends State<ChatsPage> {
     final aTime = aData['lastMessageTime'] as Timestamp?;
     final bTime = bData['lastMessageTime'] as Timestamp?;
     
-    // Если время отсутствует, помещаем в конец
     if (aTime == null && bTime == null) return 0;
     if (aTime == null) return 1;
     if (bTime == null) return -1;
     
-    // Сортируем по убыванию (новые сверху)
     return bTime.compareTo(aTime);
   });
   

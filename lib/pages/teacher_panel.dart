@@ -5,6 +5,8 @@ import 'package:school_app/services/chat_service.dart';
 import 'package:school_app/services/code_service.dart';
 import 'package:clipboard/clipboard.dart';
 import 'package:school_app/pages/schedule_editor_page.dart';
+import 'package:school_app/pages/teacher_grades_page.dart';
+import 'package:school_app/pages/teacher_homework_page.dart';
 
 class TeacherPanel extends StatefulWidget {
   const TeacherPanel({super.key});
@@ -20,6 +22,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
   
   Map<String, dynamic>? _teacherData;
   List<Map<String, dynamic>> _myClasses = [];
+  
   int _currentTab = 0;
 
   @override
@@ -92,14 +95,15 @@ class _TeacherPanelState extends State<TeacherPanel> {
             ),
           ),
 
-          // Вкладки
+          // ОБНОВЛЕННЫЕ ВКЛАДКИ
           Container(
             color: Colors.grey[100],
             child: Row(
               children: [
                 _buildTab(0, 'Мои классы', Icons.group),
-                _buildTab(1, 'Расписание', Icons.schedule),
-                _buildTab(2, 'Коды учеников', Icons.vpn_key),
+                _buildTab(1, 'Журнал', Icons.grade),  
+                _buildTab(2, 'ДЗ', Icons.assignment),
+                _buildTab(3, 'Коды', Icons.vpn_key),
               ],
             ),
           ),
@@ -149,8 +153,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
     switch (_currentTab) {
       case 0: return _buildMyClassesTab();
-      case 1: return _buildScheduleTab();
-      case 2: return _buildStudentCodesTab();
+      case 1: return _buildGradesTab(); 
+      case 2: return _buildHomeworkTab();
+      case 3: return _buildStudentCodesTab();
       default: return const Center(child: Text('Раздел в разработке'));
     }
   }
@@ -168,9 +173,9 @@ class _TeacherPanelState extends State<TeacherPanel> {
               ),
               const Spacer(),
               ElevatedButton.icon(
-                onPressed: _addStudentsToClass,
-                icon: const Icon(Icons.person_add),
-                label: const Text('Добавить учеников'),
+                onPressed: _viewClassSchedule,
+                icon: const Icon(Icons.schedule),
+                label: const Text('Расписание'),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               ),
             ],
@@ -213,21 +218,46 @@ class _TeacherPanelState extends State<TeacherPanel> {
                               .doc(classData['classId'])
                               .get(),
                           builder: (context, snapshot) {
-                            if (snapshot.hasData) {
-                              final classData = snapshot.data!.data() as Map<String, dynamic>?;
-                              final studentCount = (classData?['studentIds'] as List?)?.length ?? 0;
-                              return Text('Учеников: $studentCount');
+                            if (snapshot.hasData && snapshot.data!.exists) {
+                              final classInfo = snapshot.data!.data() as Map<String, dynamic>;
+
+                              final classCode = classInfo['classCode'] as String?;
+                              final hasCode = classCode != null && classCode.isNotEmpty;
+                              
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (hasCode)
+                                    Text(
+                                      'Код: $classCode',
+                                      style: const TextStyle(fontSize: 12, color: Colors.green),
+                                    ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Школа: ${classData['schoolName'] ?? 'Не указана'}',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                ],
+                              );
                             }
                             return const Text('Загрузка...');
                           },
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.more_vert),
-                          onPressed: () => _showClassMenu(classData),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.schedule),
+                              onPressed: () => _openClassSchedule(classData),
+                              tooltip: 'Расписание класса',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.grade),
+                              onPressed: () => _openClassGrades(classData),
+                              tooltip: 'Журнал оценок',
+                            ),
+                          ],
                         ),
-                        onTap: () {
-                          // Разработать: Открыть детали класса
-                        },
                       ),
                     );
                   },
@@ -237,173 +267,92 @@ class _TeacherPanelState extends State<TeacherPanel> {
     );
   }
 
-Widget _buildScheduleTab() {
-  return Padding(
-    padding: const EdgeInsets.all(16.0),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ФИКС: Заменяем Row на Column на маленьких экранах
-        LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth > 400) {
-              // Для широких экранов - Row
-              return Row(
-                children: [
-                  const Text(
-                    'Расписание',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  ElevatedButton.icon(
-                    onPressed: _openScheduleEditor,
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Редактировать расписание'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  ),
-                ],
-              );
-            } else {
-              // Для узких экранов - Column
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Расписание',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _openScheduleEditor,
-                      icon: const Icon(Icons.edit),
-                      label: const Text('Редактировать расписание'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                    ),
-                  ),
-                ],
-              );
-            }
-          },
-        ),
-        
-        const SizedBox(height: 16),
-        
-        // Показываем список классов учителя с возможностью выбора
-        if (_myClasses.isNotEmpty) ...[
+  Widget _buildGradesTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.grade, size: 64, color: Colors.green),
+          const SizedBox(height: 16),
           const Text(
-            'Выберите класс для редактирования расписания:',
-            style: TextStyle(fontSize: 16),
+            'Журнал оценок',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Выставление и просмотр оценок',
+            style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 16),
           
-          Expanded(
-            child: ListView.builder(
-              itemCount: _myClasses.length,
-              itemBuilder: (context, index) {
-                final classData = _myClasses[index];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blue,
-                      child: Text(
-                        classData['name']?.toString().substring(0, 1) ?? '?',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    title: Text(classData['name'] ?? 'Без названия'),
-                    subtitle: const Text('Классный руководитель: Вы'),
-                    trailing: const Icon(Icons.arrow_forward),
-                    onTap: () => _openScheduleForClass(classData),
+          if (_myClasses.isNotEmpty)
+            SizedBox(
+              width: 200,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  if (_myClasses.isNotEmpty) {
+                    _openClassGrades(_myClasses.first);
+                  }
+                },
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Открыть журнал'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            )
+          else
+            const Text(
+              'У вас нет классов для ведения журнала',
+              style: TextStyle(color: Colors.grey),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeworkTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.assignment, size: 64, color: Colors.orange),
+          const SizedBox(height: 16),
+          const Text(
+            'Домашние задания',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Создание и управление домашними заданиями',
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 16),
+          
+          SizedBox(
+            width: 200,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TeacherHomeworkPage(),
                   ),
                 );
               },
-            ),
-          ),
-        ] else ...[
-          const Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.group_off, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('Нет классов', style: TextStyle(color: Colors.grey)),
-                  SizedBox(height: 8),
-                  Text('Вас не назначили классным руководителем', 
-                      style: TextStyle(color: Colors.grey)),
-                ],
+              icon: const Icon(Icons.add),
+              label: const Text('Создать ДЗ'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
         ],
-      ],
-    ),
-  );
-}
-
-// Метод для открытия редактора расписания
-void _openScheduleEditor() {
-  // Показываем диалог выбора класса
-  if (_myClasses.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('У вас нет классов для редактирования')),
+      ),
     );
-    return;
   }
-
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Выберите класс'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: ListView.builder(
-          shrinkWrap: true,
-          itemCount: _myClasses.length,
-          itemBuilder: (context, index) {
-            final classData = _myClasses[index];
-            return ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.blue,
-                child: Text(
-                  classData['name']?.toString().substring(0, 1) ?? '?',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ),
-              title: Text(classData['name'] ?? 'Без названия'),
-              onTap: () {
-                Navigator.pop(context);
-                _openScheduleForClass(classData);
-              },
-            );
-          },
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Отмена'),
-        ),
-      ],
-    ),
-  );
- }
-
- // Метод для открытия расписания конкретного класса
- void _openScheduleForClass(Map<String, dynamic> classData) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => ScheduleEditorPage(
-        classId: classData['classId'],
-        className: classData['name'],
-      ),
-    ),
-  );
- }
 
   Widget _buildStudentCodesTab() {
     return Padding(
@@ -412,12 +361,12 @@ void _openScheduleEditor() {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Коды для учеников',
+            'Код класса для учеников',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Сгенерируйте коды для регистрации учеников в ваших классах',
+            'Создайте код для регистрации учеников в вашем классе',
             style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 16),
@@ -446,50 +395,109 @@ void _openScheduleEditor() {
                 itemCount: _myClasses.length,
                 itemBuilder: (context, index) {
                   final classData = _myClasses[index];
-                  final studentCodes = List<String>.from(classData['studentCodes'] ?? []);
+                  final className = classData['name'] ?? 'Без названия';
+                  final classId = classData['classId'];
                   
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            classData['name'] ?? 'Без названия',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          
-                          if (studentCodes.isEmpty)
-                            const Text('Нет активных кодов', style: TextStyle(color: Colors.grey))
-                          else
-                            Column(
-                              children: studentCodes.map((code) => ListTile(
-                                leading: const Icon(Icons.vpn_key, color: Colors.green),
-                                title: Text(code, style: const TextStyle(fontFamily: 'Monospace')),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.content_copy, size: 20),
-                                  onPressed: () => _copyToClipboard(code),
-                                ),
-                              )).toList(),
-                            ),
-                          
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () => _generateStudentCode(classData['classId']),
-                              icon: const Icon(Icons.vpn_key),
-                              label: const Text('Сгенерировать код'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
+                  // Загружаем текущий код класса
+                  return FutureBuilder<DocumentSnapshot>(
+                    future: FirebaseFirestore.instance
+                        .collection('classes')
+                        .doc(classId)
+                        .get(),
+                    builder: (context, snapshot) {
+                      String? currentCode;
+                      bool hasCode = false;
+                      
+                      if (snapshot.hasData && snapshot.data!.exists) {
+                        final data = snapshot.data!.data() as Map<String, dynamic>?;
+                        currentCode = data?['classCode'] as String?;
+                        hasCode = currentCode != null && currentCode.isNotEmpty;
+                      }
+                      
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                className,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                               ),
-                            ),
+                              const SizedBox(height: 8),
+                              
+                              if (hasCode)
+                                Column(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green[50],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.green),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.vpn_key, color: Colors.green),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  currentCode!,
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Monospace',
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                const Text(
+                                                  'Действующий код класса',
+                                                  style: TextStyle(fontSize: 12, color: Colors.green),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.content_copy, size: 20),
+                                            onPressed: () => _copyToClipboard(currentCode!),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Дайте этот код ученикам для регистрации в классе',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ],
+                                )
+                              else
+                                const Text(
+                                  'Код класса не создан',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _generateClassCode(classId, className),
+                                  icon: const Icon(Icons.vpn_key),
+                                  label: Text(hasCode ? 'Обновить код' : 'Создать код класса'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -499,38 +507,85 @@ void _openScheduleEditor() {
     );
   }
 
-  // Методы действий
-  void _addStudentsToClass() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Добавление учеников - в разработке')),
+  // === МЕТОДЫ НАВИГАЦИИ ===
+
+  void _openClassSchedule(Map<String, dynamic> classData) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ScheduleEditorPage(
+          classId: classData['classId'],
+          className: classData['name'],
+          isVicePrincipal: false, // Учитель - только просмотр + ДЗ
+        ),
+      ),
     );
   }
 
-  void _createSchedule() {
-    // TODO: Реализовать создание расписания
+  void _viewClassSchedule() {
+    if (_myClasses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('У вас нет классов для просмотра')),
+      );
+      return;
+    }
+    _openClassSchedule(_myClasses.first);
+  }
+
+  void _openClassGrades(Map<String, dynamic> classData) {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Создание расписания - в разработке')),
+      const SnackBar(content: Text('Пользователь не авторизован')),
+    );
+    return;
+  }
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => TeacherGradesPage(
+        teacherId: user.uid, 
+      ),
+    ),
+  );
+}
+
+  void _openHomeworkPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const TeacherHomeworkPage(),
+      ),
     );
   }
 
-  Future<void> _generateStudentCode(String classId) async {
+
+  Future<void> _generateClassCode(String classId, String className) async {
     try {
-      // Генерируем код ученика
-      final newCode = 'STU${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+      final codeService = CodeService();
+      final newCode = await codeService.generateClassCode(classId);
       
-      // Добавляем код в класс
-      await FirebaseFirestore.instance.collection('classes').doc(classId).update({
-        'studentCodes': FieldValue.arrayUnion([newCode]),
-      });
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Новый код создан: $newCode'),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Код класса создан: $newCode'),
+              const SizedBox(height: 4),
+              Text(
+                'Дайте этот код ученикам для регистрации в классе $className',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
         ),
       );
 
-      // Обновляем данные
+      // Обновляем UI
       await _loadMyClasses();
       
     } catch (e) {
@@ -543,54 +598,19 @@ void _openScheduleEditor() {
     }
   }
 
-  void _showClassMenu(Map<String, dynamic> classData) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.people),
-            title: const Text('Управление учениками'),
-            onTap: () {
-              Navigator.pop(context);
-              _addStudentsToClass();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.chat),
-            title: const Text('Открыть чат класса'),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: Открыть чат класса
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.assignment),
-            title: const Text('Домашние задания'),
-            onTap: () {
-              Navigator.pop(context);
-              setState(() => _currentTab = 2);
-            },
-          ),
-        ],
-      ),
-    );
+  Future<void> _copyToClipboard(String text) async {
+    try {
+      await FlutterClipboard.copy(text);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Код "$text" скопирован'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка копирования: $e')),
+      );
+    }
   }
-
-   Future<void> _copyToClipboard(String text) async {
-   try {
-     await FlutterClipboard.copy(text);
-     ScaffoldMessenger.of(context).showSnackBar(
-       SnackBar(
-        content: Text('Код "$text" скопирован'),
-        backgroundColor: Colors.green,
-       ),
-     );
-   }  catch (e) {
-     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Ошибка копирования: $e')),
-     );
-   }
- }
 }

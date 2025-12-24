@@ -7,7 +7,6 @@ class AdminSetup {
 
   Future<void> createDefaultAdmin() async {
     try {
-      // Проверяем, есть ли уже админ
       final adminSnapshot = await _firestore
           .collection('users')
           .where('role', isEqualTo: 'admin')
@@ -15,7 +14,6 @@ class AdminSetup {
           .get();
 
       if (adminSnapshot.docs.isEmpty) {
-        // Создаём админа
         final adminEmail = 'admin@schoolapp.ru';
         final adminPassword = 'Admin123456';
 
@@ -26,7 +24,6 @@ class AdminSetup {
 
         final uid = userCredential.user!.uid;
 
-        // Создаём запись в users
         await _firestore.collection('users').doc(uid).set({
           'uid': uid,
           'email': adminEmail,
@@ -36,7 +33,6 @@ class AdminSetup {
           'createdAt': FieldValue.serverTimestamp(),
         });
 
-        // Создаём запись в admins
         await _firestore.collection('admins').doc(uid).set({
           'uid': uid,
           'fullName': 'Администратор Системы',
