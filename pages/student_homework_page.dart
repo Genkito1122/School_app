@@ -21,6 +21,19 @@ class _StudentHomeworkPageState extends State<StudentHomeworkPage> {
   String? _className;
   bool _isLoading = true;
   String? _filterSubjectId;
+  String? _userRole;
+
+    Color get _roleColor {
+    switch (_userRole) {
+      case 'student': return Colors.blue;
+      case 'teacher': return Colors.green;
+      case 'parent': return Colors.orange;
+      case 'director': return Colors.red;
+      case 'admin': return Colors.teal;
+      default: return Colors.blue;
+    }
+  }
+
 
   @override
   void initState() {
@@ -417,7 +430,7 @@ class _StudentHomeworkPageState extends State<StudentHomeworkPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Домашние задания'),
-        backgroundColor: Colors.orange,
+        backgroundColor: _roleColor,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
