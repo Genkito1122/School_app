@@ -24,12 +24,12 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   
   // Данные расписания
-  Map<String, List<Map<String, String>>> _scheduleData = {};
+  final Map<String, List<Map<String, String>>> _scheduleData = {};
   bool _isLoading = true;
   String _selectedDay = 'monday';
 
   List<Map<String, dynamic>> _schoolSubjects = [];
-  Map<String, List<Map<String, dynamic>>> _subjectTeachers = {};
+  final Map<String, List<Map<String, dynamic>>> _subjectTeachers = {};
 
   // Контроллеры
   final Map<String, List<TextEditingController>> _subjectControllers = {};
@@ -183,7 +183,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
       (subject) => subject['subjectName'] == subjectController.text,
       orElse: () => _schoolSubjects.isNotEmpty ? _schoolSubjects.first : {},
     );
-    selectedSubjectId = selectedSubject?['subjectId'];
+    selectedSubjectId = selectedSubject['subjectId'];
   }
 
   return Card(
@@ -212,7 +212,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
           
           // Выбор предмета (Dropdown)
           DropdownButtonFormField<String>(
-            value: selectedSubjectId,
+            initialValue: selectedSubjectId,
             decoration: const InputDecoration(
               labelText: 'Предмет',
               border: OutlineInputBorder(),
@@ -252,7 +252,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
               _subjectTeachers.containsKey(selectedSubjectId) &&
               _subjectTeachers[selectedSubjectId]!.isNotEmpty)
             DropdownButtonFormField<String>(
-              value: _scheduleData[_selectedDay]![lessonIndex]['teacherId'],
+              initialValue: _scheduleData[_selectedDay]![lessonIndex]['teacherId'],
               decoration: const InputDecoration(
                 labelText: 'Учитель',
                 border: OutlineInputBorder(),
@@ -328,7 +328,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
         'classId': widget.classId,
         'className': widget.className,
         'isPermanent': true,
-        'createdBy': _currentUser!.uid,
+        'createdBy': _currentUser.uid,
         'createdByName': widget.isVicePrincipal ? 'Завуч' : 'Учитель',
         'days': daysToSave,
         'createdAt': FieldValue.serverTimestamp(),

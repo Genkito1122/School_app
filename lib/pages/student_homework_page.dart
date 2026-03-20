@@ -4,7 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:school_app/services/homework_service.dart';
 
 class StudentHomeworkPage extends StatefulWidget {
-  const StudentHomeworkPage({super.key});
+  final String? studentId; 
+  const StudentHomeworkPage({super.key, this.studentId});
 
   @override
   State<StudentHomeworkPage> createState() => _StudentHomeworkPageState();
@@ -20,6 +21,18 @@ class _StudentHomeworkPageState extends State<StudentHomeworkPage> {
   String? _className;
   bool _isLoading = true;
   String? _filterSubjectId;
+  String? _userRole;
+  
+  Color get _roleColor {
+    switch (_userRole) {
+      case 'student': return Colors.blue;
+      case 'teacher': return Colors.green;
+      case 'parent': return Colors.orange;
+      case 'director': return Colors.red;
+      case 'admin': return Colors.teal;
+      default: return Colors.blue;
+    }
+  }
 
   @override
   void initState() {
@@ -246,7 +259,7 @@ class _StudentHomeworkPageState extends State<StudentHomeworkPage> {
                           value: subjectId,
                           child: Text(hw['subjectName'] as String),
                         );
-                      }).toList(),
+                      }),
                     ],
                     onChanged: (value) {
                       setState(() => _filterSubjectId = value);
@@ -267,11 +280,6 @@ class _StudentHomeworkPageState extends State<StudentHomeworkPage> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildStatItem('Всего ДЗ', filteredHomeworks.length.toString(), Icons.assignment),
-                _buildStatItem(
-                  'Ближайший дедлайн',
-                  _getNearestDeadline(filteredHomeworks),
-                  Icons.access_time,
-                ),
               ],
             ),
           ),
@@ -421,7 +429,7 @@ class _StudentHomeworkPageState extends State<StudentHomeworkPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Домашние задания'),
-        backgroundColor: Colors.orange,
+        backgroundColor: _roleColor,
         foregroundColor: Colors.white,
         actions: [
           IconButton(

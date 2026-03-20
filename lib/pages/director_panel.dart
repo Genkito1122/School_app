@@ -22,11 +22,11 @@ class _DirectorPanelState extends State<DirectorPanel> {
   Map<String, dynamic>? _directorData;
   Map<String, dynamic>? _schoolData;
   List<Map<String, dynamic>> _teachers = [];
-  List<Map<String, dynamic>> _vicePrincipals = []; // ДОБАВЛЯЕМ ЗАВУЧЕЙ
+  List<Map<String, dynamic>> _vicePrincipals = []; 
   List<Map<String, dynamic>> _classes = [];
   
   int _currentTab = 0;
-  int _codesTabIndex = 0; // 0 = учителя, 1 = завучи
+  int _codesTabIndex = 0; 
 
   @override
   void initState() {
@@ -40,7 +40,7 @@ class _DirectorPanelState extends State<DirectorPanel> {
     try {
       final directorDoc = await FirebaseFirestore.instance
           .collection('directors')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (directorDoc.exists) {
@@ -1028,7 +1028,7 @@ class _DirectorPanelState extends State<DirectorPanel> {
         final schoolDoc = schoolsSnapshot.docs.first;
         final schoolId = schoolDoc.id;
         
-        await FirebaseFirestore.instance.collection('directors').doc(_currentUser!.uid).update({
+        await FirebaseFirestore.instance.collection('directors').doc(_currentUser.uid).update({
           'schoolId': schoolId,
         });
         await _loadSchoolData(schoolId);

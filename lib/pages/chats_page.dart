@@ -17,35 +17,42 @@ class _ChatsPageState extends State<ChatsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_currentUser == null) {
+      return const Scaffold(body: Center(child: Text('Пользователь не авторизован')));
+    }
+
     return Scaffold(
+      backgroundColor: Colors.white,
       body: StreamBuilder<QuerySnapshot>(
         stream: _chatService.getUserChats(),
         builder: (context, snapshot) {
-  if (snapshot.connectionState == ConnectionState.waiting) {
-    return const Center(child: CircularProgressIndicator());
-  }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-  if (snapshot.hasError) {
-    return Center(child: Text('Ошибка: ${snapshot.error}'));
-  }
+          if (snapshot.hasError) {
+            return Center(child: Text('Ошибка: ${snapshot.error}'));
+          }
 
-  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-    return const Center(child: Text('Нет чатов'));
-  }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(
+              child: Text('У тебя пока нет активных чатов', 
+              style: TextStyle(color: Colors.grey))
+            );
+          }
 
-  final chats = _sortChatsByTime(snapshot.data!.docs);
+          final chats = _sortChatsByTime(snapshot.data!.docs);
 
-  return ListView.builder(
-    itemCount: chats.length,
-    itemBuilder: (context, index) {
-      final chat = chats[index];
-      final chatData = chat.data() as Map<String, dynamic>;
-      
-      return _buildChatItem(chatData);
-    },
-  );
-}
-
+          return ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: chats.length,
+            separatorBuilder: (context, index) => const Divider(height: 1, indent: 80),
+            itemBuilder: (context, index) {
+              final chatData = chats[index].data() as Map<String, dynamic>;
+              return _buildChatItem(chatData);
+            },
+          );
+        },
       ),
     );
   }
@@ -53,49 +60,44 @@ class _ChatsPageState extends State<ChatsPage> {
   Widget _buildChatItem(Map<String, dynamic> chatData) {
     final chatId = chatData['chatId'];
     final chatType = chatData['type'];
-    final lastMessage = chatData['lastMessage'] ?? '';
+    final lastMessage = chatData['lastMessage'] ?? 'Нет сообщений';
     final lastMessageTime = _formatTime(chatData['lastMessageTime']);
     final chatName = _chatService.getChatDisplayName(chatData, _currentUser!.uid);
     final chatIcon = _chatService.getChatIcon(chatType);
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _getChatColor(chatType),
-          child: Icon(chatIcon, color: Colors.white),
-        ),
-        title: Text(
-          chatName,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(
-          lastMessage,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              lastMessageTime,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ChatDetailPage(
-                chatId: chatId,
-                chatName: chatName,
-                chatType: chatType,
-              ),
-            ),
-          );
-        },
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: CircleAvatar(
+        radius: 28,
+        backgroundColor: _getChatColor(chatType).withOpacity(0.1),
+        child: Icon(chatIcon, color: _getChatColor(chatType), size: 28),
       ),
+      title: Text(
+        chatName,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+      ),
+      subtitle: Text(
+        lastMessage,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+      ),
+      trailing: Text(
+        lastMessageTime,
+        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+      ),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatDetailPage(
+              chatId: chatId,
+              chatName: chatName,
+              chatType: chatType,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -104,41 +106,29 @@ class _ChatsPageState extends State<ChatsPage> {
       case 'class': return Colors.blue;
       case 'teachers': return Colors.green;
       case 'personal': return Colors.orange;
-      case 'announcement': return Colors.purple;
-      default: return Colors.grey;
+      case 'announcement': return Colors.red;
+      default: return Colors.blueGrey;
     }
   }
 
   String _formatTime(Timestamp? timestamp) {
     if (timestamp == null) return '';
-    
     final date = timestamp.toDate();
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final messageDate = DateTime(date.year, date.month, date.day);
-
-    if (messageDate == today) {
+    if (date.day == now.day && date.month == now.month && date.year == now.year) {
       return '${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    } else {
-      return '${date.day}.${date.month}';
     }
+    return '${date.day}.${date.month}';
   }
 
   List<QueryDocumentSnapshot> _sortChatsByTime(List<QueryDocumentSnapshot> chats) {
-  chats.sort((a, b) {
-    final aData = a.data() as Map<String, dynamic>;
-    final bData = b.data() as Map<String, dynamic>;
-    
-    final aTime = aData['lastMessageTime'] as Timestamp?;
-    final bTime = bData['lastMessageTime'] as Timestamp?;
-    
-    if (aTime == null && bTime == null) return 0;
-    if (aTime == null) return 1;
-    if (bTime == null) return -1;
-    
-    return bTime.compareTo(aTime);
-  });
-  
-  return chats;
- }
+    List<QueryDocumentSnapshot> sorted = List.from(chats);
+    sorted.sort((a, b) {
+      final aTime = (a.data() as Map<String, dynamic>)['lastMessageTime'] as Timestamp?;
+      final bTime = (b.data() as Map<String, dynamic>)['lastMessageTime'] as Timestamp?;
+      if (aTime == null || bTime == null) return 0;
+      return bTime.compareTo(aTime);
+    });
+    return sorted;
+  }
 }

@@ -36,7 +36,7 @@ class _TeacherPanelState extends State<TeacherPanel> {
 
     final teacherDoc = await FirebaseFirestore.instance
         .collection('teachers')
-        .doc(_currentUser!.uid)
+        .doc(_currentUser.uid)
         .get();
 
     if (teacherDoc.exists) {

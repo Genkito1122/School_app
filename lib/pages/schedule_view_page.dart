@@ -40,9 +40,9 @@ class _ScheduleViewPageState extends State<ScheduleViewPage> {
     }
 
     try {
-      print('👤 Загрузка данных пользователя: ${_currentUser!.uid}');
+      print('👤 Загрузка данных пользователя: ${_currentUser.uid}');
       
-      final userDoc = await _firestore.collection('users').doc(_currentUser!.uid).get();
+      final userDoc = await _firestore.collection('users').doc(_currentUser.uid).get();
       final userRole = userDoc.data()?['role'];
       print('🎭 Роль пользователя: $userRole');
       
@@ -54,7 +54,7 @@ class _ScheduleViewPageState extends State<ScheduleViewPage> {
       switch (userRole) {
         case 'student':
           print('🎓 Загрузка данных ученика');
-          final studentDoc = await _firestore.collection('students').doc(_currentUser!.uid).get();
+          final studentDoc = await _firestore.collection('students').doc(_currentUser.uid).get();
           if (studentDoc.exists) {
             classId = studentDoc.data()?['classId'];
             className = studentDoc.data()?['className'];
@@ -66,7 +66,7 @@ class _ScheduleViewPageState extends State<ScheduleViewPage> {
 
         case 'parent':
           print('👪 Загрузка данных родителя');
-          final parentDoc = await _firestore.collection('parents').doc(_currentUser!.uid).get();
+          final parentDoc = await _firestore.collection('parents').doc(_currentUser.uid).get();
           if (parentDoc.exists) {
             final childIds = List<String>.from(parentDoc.data()?['childIds'] ?? []);
             print('👶 Дети родителя: $childIds');
@@ -84,7 +84,7 @@ class _ScheduleViewPageState extends State<ScheduleViewPage> {
 
         case 'teacher':
           print('👨‍🏫 Загрузка данных учителя');
-          final teacherDoc = await _firestore.collection('teachers').doc(_currentUser!.uid).get();
+          final teacherDoc = await _firestore.collection('teachers').doc(_currentUser.uid).get();
           if (teacherDoc.exists) {
             final classIds = List<String>.from(teacherDoc.data()?['classIds'] ?? []);
             print('📋 ID классов учителя: $classIds');

@@ -33,6 +33,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   void initState() {
     super.initState();
     _initializeChat();
+    
   }
 
   Future<void> _initializeChat() async {
@@ -368,7 +369,9 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     if (fileName.toLowerCase().contains('.doc')) return Icons.description;
     if (fileName.toLowerCase().contains('.xls')) return Icons.table_chart;
     if (fileName.toLowerCase().contains('.jpg') || 
-        fileName.toLowerCase().contains('.png')) return Icons.image;
+        fileName.toLowerCase().contains('.png')) {
+      return Icons.image;
+    }
     return Icons.insert_drive_file;
   }
 
@@ -377,7 +380,9 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     if (fileName.toLowerCase().contains('.doc')) return 'Word';
     if (fileName.toLowerCase().contains('.xls')) return 'Excel';
     if (fileName.toLowerCase().contains('.jpg') || 
-        fileName.toLowerCase().contains('.png')) return 'Изображение';
+        fileName.toLowerCase().contains('.png')) {
+      return 'Изображение';
+    }
     return 'Файл';
   }
 
@@ -438,4 +443,5 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     _scrollController.dispose();
     super.dispose();
   }
+
 }

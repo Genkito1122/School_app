@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 
 class ChatService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -355,7 +356,7 @@ class ChatService {
 
     String lastMessageText = text;
     if (type == 'file') {
-      lastMessageText = '📎 $fileName';
+      lastMessageText = '📎 $fileName'; // Красивое отображение в списке чатов
     } else if (isAnnouncement) {
       lastMessageText = '📢 $text';
     }
@@ -371,6 +372,45 @@ class ChatService {
     rethrow;
   }
 }
+
+Future<void> sendFileMessage({
+    required String chatId,
+    required String senderName,
+    required String senderRole,
+  }) async {
+    try {
+      // 1. Выбираем файл
+      FilePickerResult? result = await FilePicker.platform.pickFiles();
+
+      if (result != null && result.files.single.path != null) {
+        File file = File(result.files.single.path!);
+        String fileName = result.files.single.name;
+        
+        // 2. Формируем путь в Storage
+        String path = 'chats/$chatId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+        
+        // 3. Загружаем
+        UploadTask uploadTask = _storage.ref(path).putFile(file);
+        TaskSnapshot snapshot = await uploadTask;
+        
+        // 4. Получаем ссылку на скачивание
+        String downloadUrl = await snapshot.ref.getDownloadURL();
+
+        // 5. Отправляем сообщение в чат, используя твой существующий sendMessage
+        await sendMessage(
+          chatId: chatId,
+          text: 'Файл: $fileName', // Текст, который увидит юзер
+          senderName: senderName,
+          senderRole: senderRole,
+          type: 'file',
+          fileUrl: downloadUrl,
+          fileName: fileName,
+        );
+      }
+    } catch (e) {
+      print('❌ Ошибка при работе с файлом: $e');
+    }
+  }
 
   Future<bool> canUserWriteToChat(String chatId) async {
   final user = _auth.currentUser;

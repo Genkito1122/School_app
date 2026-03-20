@@ -20,7 +20,7 @@ class _TeacherGradesPageState extends State<TeacherGradesPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   // Данные учителя
-  List<Map<String, dynamic>> _classes = [];
+  final List<Map<String, dynamic>> _classes = [];
   List<Map<String, dynamic>> _subjects = [];
   
   // Выбранные значения
@@ -320,7 +320,7 @@ class _TeacherGradesPageState extends State<TeacherGradesPage> {
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
         child: DataTable(
-          headingRowColor: MaterialStateColor.resolveWith(
+          headingRowColor: WidgetStateColor.resolveWith(
             (states) => Colors.green[100]!,
           ),
           columns: const [
@@ -501,7 +501,7 @@ class _TeacherGradesPageState extends State<TeacherGradesPage> {
                       ),
                     ),
                   );
-                }).toList(),
+                }),
             ],
           ),
         ),
@@ -611,7 +611,7 @@ class _TeacherGradesPageState extends State<TeacherGradesPage> {
               const SizedBox(height: 16),
               
               DropdownButtonFormField<String>(
-                value: selectedType,
+                initialValue: selectedType,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Тип работы',

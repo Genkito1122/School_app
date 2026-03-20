@@ -22,7 +22,6 @@ class _AdminPanelState extends State<AdminPanel> {
     return Scaffold(
       body: Column(
         children: [
-          // Заголовок
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),

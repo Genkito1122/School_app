@@ -226,7 +226,7 @@ class _StudentGradesPageState extends State<StudentGradesPage> {
                             ),
                           ),
                         );
-                      }).toList(),
+                      }),
                     ],
                   ),
               ],

@@ -22,11 +22,11 @@ class _SubjectsManagerPageState extends State<SubjectsManagerPage> with SingleTi
   
   late TabController _tabController;
   List<Map<String, dynamic>> _subjects = [];
-  Map<String, List<Map<String, dynamic>>> _teachersBySubject = {};
+  final Map<String, List<Map<String, dynamic>>> _teachersBySubject = {};
   List<Map<String, dynamic>> _allTeachers = [];
   
   bool _isLoading = true;
-  int _currentTab = 0; // 0 = предметы, 1 = назначения
+  final int _currentTab = 0; // 0 = предметы, 1 = назначения
 
   @override
   void initState() {
@@ -228,7 +228,7 @@ class _SubjectsManagerPageState extends State<SubjectsManagerPage> with SingleTi
                         groupValue: selectedTeacherId,
                         onChanged: (value) => setState(() => selectedTeacherId = value),
                       );
-                    }).toList(),
+                    }),
                 ],
               ),
             ),
@@ -447,7 +447,7 @@ class _SubjectsManagerPageState extends State<SubjectsManagerPage> with SingleTi
                                             tooltip: 'Удалить назначение',
                                           ),
                                         );
-                                      }).toList(),
+                                      }),
                                     
                                     const SizedBox(height: 8),
                                     SizedBox(
@@ -558,7 +558,7 @@ class _SubjectsManagerPageState extends State<SubjectsManagerPage> with SingleTi
                                                 style: const TextStyle(fontSize: 12),
                                               ),
                                             );
-                                          }).toList(),
+                                          }),
                                       ],
                                     ),
                                   ),

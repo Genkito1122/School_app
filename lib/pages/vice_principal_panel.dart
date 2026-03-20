@@ -39,7 +39,7 @@ class _VicePrincipalPanelState extends State<VicePrincipalPanel> {
     try {
       final vicePrincipalDoc = await _firestore
           .collection('vice_principals')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (vicePrincipalDoc.exists) {
@@ -277,7 +277,7 @@ class _VicePrincipalPanelState extends State<VicePrincipalPanel> {
                         setState(() => _currentTab = 3);
                       }),
                       _buildActionButton('Отправить объявление', Icons.campaign, () {
-                        setState(() => _currentTab = 4);
+                        setState(() => _currentTab = 5);
                       }),
                       _buildActionButton('Чат учителей', Icons.chat, _openTeachersChat),
                     ],

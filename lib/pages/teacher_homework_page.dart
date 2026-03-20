@@ -700,7 +700,7 @@ class _TeacherHomeworkPageState extends State<TeacherHomeworkPage> {
   
   if (deadline != null) {
     deadlineDate = deadline.toDate();
-    deadlineText = '${deadlineDate!.day}.${deadlineDate!.month}.${deadlineDate!.year}';
+    deadlineText = '${deadlineDate.day}.${deadlineDate.month}.${deadlineDate.year}';
   }
   
   final isOverdue = homework['isOverdue'] as bool? ?? false;
